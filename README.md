@@ -2,6 +2,17 @@
 
 Cross-platform C++ app using raylib + rlImGui + Dear ImGui, built with CMake. Windows and WSL/Linux are supported out of the box.
 
+## Repository
+
+- Repo: https://github.com/nikmes/gamebuilder2d
+- Default branch: `main`
+
+Clone:
+```powershell
+git clone https://github.com/nikmes/gamebuilder2d.git
+cd gamebuilder2d
+```
+
 ## Prerequisites
 
 - Windows: Visual Studio 2022 (Desktop C++), CMake 3.16+, Git
