@@ -134,6 +134,30 @@
                     "sourceDir": "$env{HOME}/.vs/$ms{projectDirName}"
                 }
             }
+        },
+        {
+            "name": "psp-debug",
+            "displayName": "PSP Debug (pspsdk)",
+            "generator": "Unix Makefiles",
+            "binaryDir": "${sourceDir}/out/build/${presetName}",
+            "installDir": "${sourceDir}/out/install/${presetName}",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/psp.cmake"
+            },
+            "cmakeExecutable": "/usr/local/pspdev/bin/psp-cmake"
+        },
+        {
+            "name": "psp-release",
+            "displayName": "PSP Release (pspsdk)",
+            "generator": "Unix Makefiles",
+            "binaryDir": "${sourceDir}/out/build/${presetName}",
+            "installDir": "${sourceDir}/out/install/${presetName}",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/psp.cmake"
+            },
+            "cmakeExecutable": "/usr/local/pspdev/bin/psp-cmake"
         }
     ],
     "buildPresets": [
@@ -172,6 +196,17 @@
             "name": "windows-vs2022-x64-debug",
             "displayName": "Build Windows VS2022 x64 Debug",
             "configurePreset": "windows-vs2022-x64-debug"
+        }
+        ,
+        {
+            "name": "psp-debug",
+            "displayName": "PSP Debug (pspsdk)",
+            "configurePreset": "psp-debug"
+        },
+        {
+            "name": "psp-release",
+            "displayName": "PSP Release (pspsdk)",
+            "configurePreset": "psp-release"
         }
     ]
 }

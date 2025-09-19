@@ -16,6 +16,10 @@ if (MSVC)
   add_compile_options(/FS)
 endif()
 
-# Include sub-projects.
-add_subdirectory ("GameBuilder2d")
-add_subdirectory ("RunTime2d")
+# Include sub-projects conditionally by platform/toolchain
+if (CMAKE_SYSTEM_NAME STREQUAL "PSP")
+  add_subdirectory ("RunTime2dPSP")
+else()
+  add_subdirectory ("GameBuilder2d")
+  add_subdirectory ("RunTime2d")
+endif()
