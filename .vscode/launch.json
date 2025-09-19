@@ -1,0 +1,56 @@
+{
+  // VS Code launch configurations for debugging the Linux build via WSL
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "WSL: Debug build-linux (Makefiles)",
+      "type": "cppdbg",
+      "request": "launch",
+      "MIMode": "gdb",
+      "miDebuggerPath": "/usr/bin/gdb",
+      "program": "/mnt/c/Users/nikme/source/repos/GameBuilder2d/build-linux/GameBuilder2d/GameBuilder2d",
+      "cwd": "/mnt/c/Users/nikme/source/repos/GameBuilder2d/build-linux/GameBuilder2d",
+      "args": [],
+      "stopAtEntry": false,
+      "externalConsole": false,
+      "preLaunchTask": "WSL: Build (Debug)",
+      "setupCommands": [
+        {
+          "text": "-enable-pretty-printing",
+          "description": "Enable pretty printing",
+          "ignoreFailures": true
+        }
+      ],
+      "pipeTransport": {
+        "pipeProgram": "wsl.exe",
+        "pipeArgs": ["-e", "bash", "-lc"],
+        "debuggerPath": "/usr/bin/gdb"
+      }
+    },
+    {
+      "name": "WSL: Debug out/build/linux-debug (Ninja)",
+      "type": "cppdbg",
+      "request": "launch",
+      "MIMode": "gdb",
+      "miDebuggerPath": "/usr/bin/gdb",
+      "program": "/mnt/c/Users/nikme/source/repos/GameBuilder2d/out/build/linux-debug/GameBuilder2d/GameBuilder2d",
+      "cwd": "/mnt/c/Users/nikme/source/repos/GameBuilder2d/out/build/linux-debug/GameBuilder2d",
+      "args": [],
+      "stopAtEntry": false,
+      "externalConsole": false,
+      "preLaunchTask": "WSL: Build (Ninja, Debug) [requires ninja]",
+      "setupCommands": [
+        {
+          "text": "-enable-pretty-printing",
+          "description": "Enable pretty printing",
+          "ignoreFailures": true
+        }
+      ],
+      "pipeTransport": {
+        "pipeProgram": "wsl.exe",
+        "pipeArgs": ["-e", "bash", "-lc"],
+        "debuggerPath": "/usr/bin/gdb"
+      }
+    }
+  ]
+}

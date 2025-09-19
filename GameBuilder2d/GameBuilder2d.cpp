@@ -19,7 +19,7 @@ int main()
 	while (!WindowShouldClose())
 	{
 		BeginDrawing();
-		ClearBackground(RAYWHITE);
+		ClearBackground(DARKGRAY);
 
 		rlImGuiBegin();
 		ImGui::ShowDemoWindow();
