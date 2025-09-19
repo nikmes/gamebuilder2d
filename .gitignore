@@ -1,0 +1,63 @@
+# C++ / CMake / Visual Studio / WSL
+
+# CMake build directories and artifacts
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+Makefile
+install_manifest.txt
+compile_commands.json
+build/
+build-*/
+out/
+
+# Common local build folders
+bin/
+obj/
+Debug/
+Release/
+RelWithDebInfo/
+MinSizeRel/
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.VC.db
+*.VC.db-shm
+*.VC.db-wal
+*.ipch/
+*.opendb
+
+# MSVC/MSBuild intermediates
+*.obj
+*.pdb
+*.idb
+*.ilk
+*.pch
+*.tlog
+*.lastbuildstate
+*.log
+
+# Binaries / libs
+*.exe
+*.dll
+*.lib
+*.exp
+*.a
+*.so
+*.dylib
+
+# ImGui runtime state
+imgui.ini
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swu
+*.tmp
+*.bak
