@@ -44,6 +44,8 @@ target_link_libraries(RunTime2dPSP PRIVATE
 # Apply firmware define and (optionally) PRX link flags
 target_compile_definitions(RunTime2dPSP PRIVATE PSP_FW_VERSION=${PSP_FW_VERSION})
 if (PSP_BUILD_PRX)
+  # Add exports for PRX
+  target_sources(RunTime2dPSP PRIVATE exports.exp)
   # Link as PRX: use prxspecs and linkfile.prx; avoid startup files
   target_link_options(RunTime2dPSP PRIVATE
     -specs=${PSPDEV}/psp/sdk/lib/prxspecs
@@ -51,6 +53,7 @@ if (PSP_BUILD_PRX)
     -nostartfiles
     -Wl,-zmax-page-size=128
   )
+  target_compile_definitions(RunTime2dPSP PRIVATE PSP_BUILD_PRX=1)
 endif()
 
 # Output an EBOOT.PBP via post-build if tools are available

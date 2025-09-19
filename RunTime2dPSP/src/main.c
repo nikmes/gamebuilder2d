@@ -28,3 +28,9 @@ int main(int argc, char* argv[])
     sceKernelExitGame();
     return 0;
 }
+
+#ifdef PSP_BUILD_PRX
+// Provide PRX entry/exit points for PSPLink/loading
+int module_start(SceSize args, void* argp) { return 0; }
+int module_stop(SceSize args, void* argp) { return 0; }
+#endif
