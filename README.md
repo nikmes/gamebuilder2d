@@ -86,6 +86,7 @@ cmake --build --preset linux-debug
 ## Targets
 - `GameBuilder2d`: Raylib + ImGui prototype app.
 - `RunTime2d`: Minimal console app that prints "Hello, world!".
+ - `RunTime2dPSP`: PSP homebrew (no raylib/ImGui), packages `EBOOT.PBP`.
 
 ### Run (WSL/Linux)
 After building with Unix Makefiles:
@@ -100,6 +101,28 @@ wsl.exe -e bash -lc "cd /mnt/c/Users/<your-user>/source/repos/GameBuilder2d/buil
 - raylib: built as a static lib; GLFW and platform specifics are handled automatically.
 - rlImGui: brought in via `FetchContent_MakeAvailable`; we alias/export a stable `rlImGui` target.
 - Dear ImGui: sources are fetched and compiled into a local static lib.
+
+## PSP (PSPSDK via WSL)
+
+Prerequisites:
+- PSPSDK toolchain installed (default path `/usr/local/pspdev`) and on PATH.
+- Tools: `mksfo` (or `mksfoex`) and `pack-pbp` available; optional `psp-fixup-imports`, `psp-prxgen`.
+
+Configure (uses pspsdk wrapper `psp-cmake`):
+```bash
+/usr/local/pspdev/bin/psp-cmake --preset psp-debug
+```
+
+Build target and produce `EBOOT.PBP`:
+```bash
+cmake --build --preset psp-debug --target RunTime2dPSP
+```
+
+Output:
+- `out/build/psp-debug/RunTime2dPSP/EBOOT.PBP`
+- Uses the built ELF as `DATA.PSP` by default; if `psp-prxgen` is detected, a PRX is attempted.
+
+Tip: Use `psp-release` preset for optimized builds.
 
 ## Troubleshooting
 
