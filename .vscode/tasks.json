@@ -23,6 +23,37 @@
       "problemMatcher": []
     },
     {
+      "label": "WSL: PSP Configure (psp-debug)",
+      "type": "shell",
+      "command": "wsl.exe",
+      "args": [
+        "--cd",
+        "${workspaceFolder}",
+        "-e",
+        "bash",
+        "-lc",
+        "/usr/local/pspdev/bin/psp-cmake --preset psp-debug"
+      ],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "WSL: PSP Build (psp-debug)",
+      "type": "shell",
+      "command": "wsl.exe",
+      "args": [
+        "--cd",
+        "${workspaceFolder}",
+        "-e",
+        "bash",
+        "-lc",
+        "cmake --build --preset psp-debug --target RunTime2dPSP"
+      ],
+      "group": { "kind": "build" },
+      "problemMatcher": ["$gcc"],
+      "dependsOn": ["WSL: PSP Configure (psp-debug)"]
+    },
+    {
       "label": "WSL: Build (Debug)",
       "type": "shell",
       "command": "wsl.exe",
