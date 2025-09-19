@@ -23,6 +23,15 @@ endif()
 include_directories(${PSPDEV}/psp/sdk/include)
 link_directories(${PSPDEV}/psp/sdk/lib)
 
+# Firmware/API level (default 660). Can override with -DPSP_FW_VERSION=XXX
+set(PSP_FW_VERSION "${PSP_FW_VERSION}" CACHE STRING "PSP firmware API version (e.g. 660)")
+if (NOT PSP_FW_VERSION)
+  set(PSP_FW_VERSION 660)
+endif()
+
+# Option to build a PRX module instead of a regular ELF
+option(PSP_BUILD_PRX "Link as PRX module and package PRX as DATA.PSP" ON)
+
 add_executable(RunTime2dPSP
   src/main.c
 )
@@ -31,6 +40,18 @@ add_executable(RunTime2dPSP
 target_link_libraries(RunTime2dPSP PRIVATE
   pspdebug pspdisplay pspge pspctrl pspgu pspgum m
 )
+
+# Apply firmware define and (optionally) PRX link flags
+target_compile_definitions(RunTime2dPSP PRIVATE PSP_FW_VERSION=${PSP_FW_VERSION})
+if (PSP_BUILD_PRX)
+  # Link as PRX: use prxspecs and linkfile.prx; avoid startup files
+  target_link_options(RunTime2dPSP PRIVATE
+    -specs=${PSPDEV}/psp/sdk/lib/prxspecs
+    -Wl,-q,-T${PSPDEV}/psp/sdk/lib/linkfile.prx
+    -nostartfiles
+    -Wl,-zmax-page-size=128
+  )
+endif()
 
 # Output an EBOOT.PBP via post-build if tools are available
 # Tools: mksfo/mksfoex to create PARAM.SFO, psp-prxgen to create PRX, pack-pbp to assemble PBP
@@ -70,17 +91,15 @@ if (PACK_PBP AND MKSFO)
   # Copy PIC1 if present
   COMMAND ${CMAKE_COMMAND} -E echo "PIC1: ${PIC1_ARG}"
   COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/pic1.png PIC1.PNG
-    # Create ELF and convert to PRX if tools exist, else fallback to ELF
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:RunTime2dPSP> BOOT.ELF
-    COMMAND ${CMAKE_COMMAND} -E echo "Fixing imports (if available)"
-    COMMAND 
-      ${CMAKE_COMMAND} -E env PSPDEV=$ENV{PSPDEV} ${PSP_FIXUP_IMPORTS} BOOT.ELF || ${CMAKE_COMMAND} -E echo "psp-fixup-imports not found"
-    COMMAND ${CMAKE_COMMAND} -E echo "Generating PRX (if available)"
-    COMMAND 
-      ${CMAKE_COMMAND} -E env PSPDEV=$ENV{PSPDEV} ${PSP_PRXGEN} BOOT.ELF BOOT.PRX || ${CMAKE_COMMAND} -E copy_if_different BOOT.ELF BOOT.PRX
+    # Select DATA file: PRX when PSP_BUILD_PRX=ON, else ELF
+    COMMAND ${CMAKE_COMMAND} -E echo "Preparing DATA for EBOOT (PSP_BUILD_PRX=${PSP_BUILD_PRX})"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:RunTime2dPSP> $<IF:$<BOOL:${PSP_BUILD_PRX}>,BOOT.PRX,BOOT.ELF>
+    # Optional strip
+    COMMAND ${CMAKE_COMMAND} -E echo "Stripping (if available)"
+    COMMAND ${CMAKE_COMMAND} -E env PSPDEV=$ENV{PSPDEV} ${PSP_STRIP} -s $<IF:$<BOOL:${PSP_BUILD_PRX}>,BOOT.PRX,BOOT.ELF> || ${CMAKE_COMMAND} -E echo "psp-strip not found"
     COMMAND ${CMAKE_COMMAND} -E echo "Packing EBOOT.PBP"
   # Order: PARAM.SFO ICON0.PNG ICON1.PMF PIC0.PNG PIC1.PNG SND0.AT3 DATA.PSP [DATA.PSAR]
-  COMMAND ${PACK_PBP} EBOOT.PBP PARAM.SFO ${ICON_ARG} NULL ${PIC0_ARG} ${PIC1_ARG} NULL BOOT.ELF NULL
+  COMMAND ${PACK_PBP} EBOOT.PBP PARAM.SFO ${ICON_ARG} NULL ${PIC0_ARG} ${PIC1_ARG} NULL $<IF:$<BOOL:${PSP_BUILD_PRX}>,BOOT.PRX,BOOT.ELF> NULL
     WORKING_DIRECTORY ${PSP_OUTPUT_DIR}
     VERBATIM
   )
