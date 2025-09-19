@@ -5,7 +5,18 @@
 cmake_policy(SET CMP0077 NEW)
 
 # Add source to this project's executable.
-add_executable (GameBuilder2d "GameBuilder2d.cpp" "GameBuilder2d.h")
+add_executable (GameBuilder2d
+  "src/GameBuilder2d.cpp"
+  "src/GameBuilder2d.h"
+  "src/window/Window.h"
+  "src/window/DockRegion.h"
+  "src/window/Layout.h"
+  "src/window/WindowManager.h"
+  "src/window/Window.cpp"
+  "src/window/DockRegion.cpp"
+  "src/window/Layout.cpp"
+  "src/window/WindowManager.cpp"
+)
 
 set_property(TARGET GameBuilder2d PROPERTY CXX_STANDARD 20)
 
@@ -24,7 +35,7 @@ FetchContent_MakeAvailable(raylib)
 FetchContent_Declare(
   imgui
   GIT_REPOSITORY https://github.com/ocornut/imgui.git
-  GIT_TAG v1.92.1
+  GIT_TAG docking
 )
 FetchContent_MakeAvailable(imgui)
 FetchContent_GetProperties(imgui)
@@ -37,6 +48,20 @@ add_library(imgui STATIC
 )
 target_include_directories(imgui PUBLIC ${imgui_SOURCE_DIR})
 target_compile_definitions(imgui PUBLIC IMGUI_DEFINE_MATH_OPERATORS)
+
+# ImGuiFileDialog
+FetchContent_Declare(
+  imguifiledialog
+  GIT_REPOSITORY https://github.com/aiekick/ImGuiFileDialog.git
+  GIT_TAG master
+)
+FetchContent_MakeAvailable(imguifiledialog)
+FetchContent_GetProperties(imguifiledialog)
+add_library(imguifiledialog STATIC
+  ${imguifiledialog_SOURCE_DIR}/ImGuiFileDialog.cpp
+)
+target_include_directories(imguifiledialog PUBLIC ${imguifiledialog_SOURCE_DIR})
+target_link_libraries(imguifiledialog PUBLIC imgui)
 
 # rlImGui via FetchContent_MakeAvailable (upstream provides CMake)
 FetchContent_Declare(
@@ -66,7 +91,7 @@ if (NOT TARGET rlimgui AND NOT TARGET rlImGui)
   target_link_libraries(rlImGui PUBLIC raylib imgui)
 endif()
 
-target_link_libraries(GameBuilder2d PRIVATE raylib rlImGui imgui)
+target_link_libraries(GameBuilder2d PRIVATE raylib rlImGui imgui imguifiledialog)
 
 if (WIN32)
   target_link_libraries(GameBuilder2d PRIVATE winmm)

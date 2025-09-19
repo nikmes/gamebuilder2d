@@ -4,7 +4,7 @@
 cmake_policy(SET CMP0077 NEW)
 
 add_executable(RunTime2d
-    main.cpp
+    src/main.cpp
 )
 
 set_property(TARGET RunTime2d PROPERTY CXX_STANDARD 20)
