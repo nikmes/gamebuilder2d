@@ -18,3 +18,4 @@ endif()
 
 # Include sub-projects.
 add_subdirectory ("GameBuilder2d")
+add_subdirectory ("RunTime2d")

@@ -83,6 +83,18 @@ cmake --build --preset linux-debug
 - `CMakePresets.json`: presets for Windows (VS 2022) and Linux
 - `.vscode/tasks.json`: WSL tasks for configure/build/run
 
+## Targets
+- `GameBuilder2d`: Raylib + ImGui prototype app.
+- `RunTime2d`: Minimal console app that prints "Hello, world!".
+
+### Run (WSL/Linux)
+After building with Unix Makefiles:
+
+```powershell
+wsl.exe -e bash -lc "cd /mnt/c/Users/<your-user>/source/repos/GameBuilder2d/build-linux/RunTime2d; ./RunTime2d"
+wsl.exe -e bash -lc "cd /mnt/c/Users/<your-user>/source/repos/GameBuilder2d/build-linux/GameBuilder2d; ./GameBuilder2d"
+```
+
 ## Dependency notes
 
 - raylib: built as a static lib; GLFW and platform specifics are handled automatically.

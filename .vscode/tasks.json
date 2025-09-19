@@ -7,10 +7,19 @@
       "type": "shell",
       "command": "wsl.exe",
       "args": [
-        "-e", "bash", "-lc",
-        "cd $(wslpath '${workspaceFolder}'); cmake -S . -B build-linux -G 'Unix Makefiles' -DCMAKE_BUILD_TYPE=Debug"
+        "--cd",
+        "${workspaceFolder}",
+        "-e",
+        "bash",
+        "-lc",
+        "cmake -S . -B build-linux -DCMAKE_BUILD_TYPE=Debug"
       ],
       "group": "build",
+      "options": {
+        "env": {
+          "CMAKE_GENERATOR": "Unix Makefiles"
+        }
+      },
       "problemMatcher": []
     },
     {
@@ -18,8 +27,12 @@
       "type": "shell",
       "command": "wsl.exe",
       "args": [
-        "-e", "bash", "-lc",
-        "cd $(wslpath '${workspaceFolder}'); cmake --build build-linux"
+        "--cd",
+        "${workspaceFolder}",
+        "-e",
+        "bash",
+        "-lc",
+        "cmake --build build-linux"
       ],
       "group": { "kind": "build", "isDefault": true },
       "problemMatcher": ["$gcc"],
@@ -30,10 +43,29 @@
       "type": "shell",
       "command": "wsl.exe",
       "args": [
-        "-e", "bash", "-lc",
-        "cd $(wslpath '${workspaceFolder}')/build-linux/GameBuilder2d; ./GameBuilder2d"
+        "--cd",
+        "${workspaceFolder}/build-linux/GameBuilder2d",
+        "-e",
+        "bash",
+        "-lc",
+        "./GameBuilder2d"
       ],
       "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "WSL: Run (RunTime2d)",
+      "type": "shell",
+      "command": "wsl.exe",
+      "args": [
+        "--cd",
+        "${workspaceFolder}/build-linux/RunTime2d",
+        "-e",
+        "bash",
+        "-lc",
+        "./RunTime2d"
+      ],
+      "group": { "kind": "test" },
       "problemMatcher": []
     },
     {
@@ -41,8 +73,12 @@
       "type": "shell",
       "command": "wsl.exe",
       "args": [
-        "-e", "bash", "-lc",
-        "cd $(wslpath '${workspaceFolder}'); rm -rf build-linux out"
+        "--cd",
+        "${workspaceFolder}",
+        "-e",
+        "bash",
+        "-lc",
+        "rm -rf build-linux out"
       ],
       "problemMatcher": []
     },
@@ -52,8 +88,12 @@
       "type": "shell",
       "command": "wsl.exe",
       "args": [
-        "-e", "bash", "-lc",
-        "cd $(wslpath '${workspaceFolder}'); cmake --preset linux-debug"
+        "--cd",
+        "${workspaceFolder}",
+        "-e",
+        "bash",
+        "-lc",
+        "cmake --preset linux-debug"
       ],
       "group": "build",
       "problemMatcher": []
@@ -63,8 +103,12 @@
       "type": "shell",
       "command": "wsl.exe",
       "args": [
-        "-e", "bash", "-lc",
-        "cd $(wslpath '${workspaceFolder}'); cmake --build --preset linux-debug"
+        "--cd",
+        "${workspaceFolder}",
+        "-e",
+        "bash",
+        "-lc",
+        "cmake --build --preset linux-debug"
       ],
       "group": "build",
       "problemMatcher": ["$gcc"],
