@@ -55,12 +55,18 @@ if (PACK_PBP AND MKSFO)
     set(PIC1_ARG PIC1.PNG)
   endif()
 
+  # Always provide PIC0.PNG (title image). If source is missing, generate a tiny default PNG.
+  set(PIC0_ARG PIC0.PNG)
+
   add_custom_command(TARGET RunTime2dPSP POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E echo "Preparing PSP assets"
     COMMAND ${MKSFO} "RunTime2dPSP" PARAM.SFO
     # Copy icon if present
     COMMAND ${CMAKE_COMMAND} -E echo "ICON0: ${ICON_ARG}"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/icon0.png ICON0.PNG
+  # Ensure PIC0.PNG exists: copy provided or generate default 1x1 PNG
+  COMMAND /bin/sh -lc "if [ -f '${CMAKE_CURRENT_SOURCE_DIR}/pic0.png' ]; then cp '${CMAKE_CURRENT_SOURCE_DIR}/pic0.png' PIC0.PNG; else printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMBApWZC1kAAAAASUVORK5CYII=' | base64 -d > PIC0.PNG; fi"
+  COMMAND ${CMAKE_COMMAND} -E echo "PIC0: ${PIC0_ARG}"
   # Copy PIC1 if present
   COMMAND ${CMAKE_COMMAND} -E echo "PIC1: ${PIC1_ARG}"
   COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/pic1.png PIC1.PNG
@@ -74,7 +80,7 @@ if (PACK_PBP AND MKSFO)
       ${CMAKE_COMMAND} -E env PSPDEV=$ENV{PSPDEV} ${PSP_PRXGEN} BOOT.ELF BOOT.PRX || ${CMAKE_COMMAND} -E copy_if_different BOOT.ELF BOOT.PRX
     COMMAND ${CMAKE_COMMAND} -E echo "Packing EBOOT.PBP"
   # Order: PARAM.SFO ICON0.PNG ICON1.PMF PIC0.PNG PIC1.PNG SND0.AT3 DATA.PSP [DATA.PSAR]
-  COMMAND ${PACK_PBP} EBOOT.PBP PARAM.SFO ${ICON_ARG} NULL NULL ${PIC1_ARG} NULL BOOT.ELF NULL
+  COMMAND ${PACK_PBP} EBOOT.PBP PARAM.SFO ${ICON_ARG} NULL ${PIC0_ARG} ${PIC1_ARG} NULL BOOT.ELF NULL
     WORKING_DIRECTORY ${PSP_OUTPUT_DIR}
     VERBATIM
   )
