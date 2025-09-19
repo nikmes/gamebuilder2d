@@ -1,0 +1,74 @@
+{
+  // VS Code tasks to build and run via WSL
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "WSL: Configure (Unix Makefiles, Debug)",
+      "type": "shell",
+      "command": "wsl.exe",
+      "args": [
+        "-e", "bash", "-lc",
+        "cd $(wslpath '${workspaceFolder}'); cmake -S . -B build-linux -G 'Unix Makefiles' -DCMAKE_BUILD_TYPE=Debug"
+      ],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "WSL: Build (Debug)",
+      "type": "shell",
+      "command": "wsl.exe",
+      "args": [
+        "-e", "bash", "-lc",
+        "cd $(wslpath '${workspaceFolder}'); cmake --build build-linux"
+      ],
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": ["$gcc"],
+      "dependsOn": ["WSL: Configure (Unix Makefiles, Debug)"]
+    },
+    {
+      "label": "WSL: Run",
+      "type": "shell",
+      "command": "wsl.exe",
+      "args": [
+        "-e", "bash", "-lc",
+        "cd $(wslpath '${workspaceFolder}')/build-linux/GameBuilder2d; ./GameBuilder2d"
+      ],
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "WSL: Clean",
+      "type": "shell",
+      "command": "wsl.exe",
+      "args": [
+        "-e", "bash", "-lc",
+        "cd $(wslpath '${workspaceFolder}'); rm -rf build-linux out"
+      ],
+      "problemMatcher": []
+    },
+
+    {
+      "label": "WSL: Configure (Ninja, Debug) [requires ninja]",
+      "type": "shell",
+      "command": "wsl.exe",
+      "args": [
+        "-e", "bash", "-lc",
+        "cd $(wslpath '${workspaceFolder}'); cmake --preset linux-debug"
+      ],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "WSL: Build (Ninja, Debug) [requires ninja]",
+      "type": "shell",
+      "command": "wsl.exe",
+      "args": [
+        "-e", "bash", "-lc",
+        "cd $(wslpath '${workspaceFolder}'); cmake --build --preset linux-debug"
+      ],
+      "group": "build",
+      "problemMatcher": ["$gcc"],
+      "dependsOn": ["WSL: Configure (Ninja, Debug) [requires ninja]"]
+    }
+  ]
+}

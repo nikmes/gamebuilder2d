@@ -1,7 +1,7 @@
 ﻿# CMakeList.txt : Top-level CMake project file, do global configuration
 # and include sub-projects here.
 #
-cmake_minimum_required (VERSION 3.8)
+cmake_minimum_required (VERSION 3.16)
 
 # Enable Hot Reload for MSVC compilers if supported.
 if (POLICY CMP0141)
@@ -10,6 +10,11 @@ if (POLICY CMP0141)
 endif()
 
 project ("GameBuilder2d")
+
+# Avoid MSVC PDB contention during parallel builds
+if (MSVC)
+  add_compile_options(/FS)
+endif()
 
 # Include sub-projects.
 add_subdirectory ("GameBuilder2d")
