@@ -1,0 +1,2 @@
+#pragma code_page(65001)
+1 /* CREATEPROCESS_MANIFEST_RESOURCE_ID */ 24 /* RT_MANIFEST */ "C:/Users/nikme/source/repos/GameBuilder2d/out/build/x64-debug/GameBuilder2d/CMakeFiles/GameBuilder2d.dir/embed.manifest"

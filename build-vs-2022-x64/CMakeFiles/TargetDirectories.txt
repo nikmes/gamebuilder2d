@@ -1,0 +1,3 @@
+C:/Users/nikme/source/repos/GameBuilder2d/build-vs-2022-x64/CMakeFiles/ALL_BUILD.dir
+C:/Users/nikme/source/repos/GameBuilder2d/build-vs-2022-x64/CMakeFiles/ZERO_CHECK.dir
+C:/Users/nikme/source/repos/GameBuilder2d/build-vs-2022-x64/GameBuilder2d/CMakeFiles/GameBuilder2d.dir
