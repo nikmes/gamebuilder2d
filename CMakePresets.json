@@ -143,7 +143,11 @@
             "installDir": "${sourceDir}/out/install/${presetName}",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
-                "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/psp.cmake"
+                "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/psp.cmake",
+                "PSP_BUILD_PRX": "OFF",
+                "BUILD_FOR_PSP": "ON",
+                "PSP_EBOOT_TITLE": "RunTime2d",
+                "PSP_EBOOT_ID": "HBRUN001"
             },
             "cmakeExecutable": "/usr/local/pspdev/bin/psp-cmake"
         },
@@ -155,7 +159,46 @@
             "installDir": "${sourceDir}/out/install/${presetName}",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
-                "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/psp.cmake"
+                "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/psp.cmake",
+                "PSP_BUILD_PRX": "OFF",
+                "BUILD_FOR_PSP": "ON",
+                "PSP_EBOOT_TITLE": "RunTime2d",
+                "PSP_EBOOT_ID": "HBRUN001"
+            },
+            "cmakeExecutable": "/usr/local/pspdev/bin/psp-cmake"
+        }
+        ,
+        {
+            "name": "psp-debug-prx",
+            "displayName": "PSP Debug PRX (pspsdk)",
+            "generator": "Unix Makefiles",
+            "binaryDir": "${sourceDir}/out/build/${presetName}",
+            "installDir": "${sourceDir}/out/install/${presetName}",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/psp.cmake",
+                "PSP_BUILD_PRX": "ON",
+                "PSP_FW_VERSION": "500",
+                "BUILD_FOR_PSP": "ON",
+                "PSP_EBOOT_TITLE": "RAYLIB",
+                "PSP_EBOOT_ID": "HBRUN001"
+            },
+            "cmakeExecutable": "/usr/local/pspdev/bin/psp-cmake"
+        },
+        {
+            "name": "psp-release-prx",
+            "displayName": "PSP Release PRX (pspsdk)",
+            "generator": "Unix Makefiles",
+            "binaryDir": "${sourceDir}/out/build/${presetName}",
+            "installDir": "${sourceDir}/out/install/${presetName}",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/psp.cmake",
+                "PSP_BUILD_PRX": "ON",
+                "PSP_FW_VERSION": "500",
+                "BUILD_FOR_PSP": "ON",
+                "PSP_EBOOT_TITLE": "RAYLIB",
+                "PSP_EBOOT_ID": "HBRUN001"
             },
             "cmakeExecutable": "/usr/local/pspdev/bin/psp-cmake"
         }
@@ -207,6 +250,17 @@
             "name": "psp-release",
             "displayName": "PSP Release (pspsdk)",
             "configurePreset": "psp-release"
+        }
+        ,
+        {
+            "name": "psp-debug-prx",
+            "displayName": "PSP Debug PRX (pspsdk)",
+            "configurePreset": "psp-debug-prx"
+        },
+        {
+            "name": "psp-release-prx",
+            "displayName": "PSP Release PRX (pspsdk)",
+            "configurePreset": "psp-release-prx"
         }
     ]
 }

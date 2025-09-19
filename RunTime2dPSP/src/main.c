@@ -3,8 +3,11 @@
 #include <pspdisplay.h>
 #include <pspctrl.h>
 
-PSP_MODULE_INFO("RunTime2dPSP", 0, 1, 0);
+PSP_MODULE_INFO("RunTime2dPSP", PSP_MODULE_USER, 1, 0);
 PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER | THREAD_ATTR_VFPU);
+#ifndef PSP_BUILD_PRX
+PSP_HEAP_SIZE_MAX();
+#endif
 
 #define printf pspDebugScreenPrintf
 

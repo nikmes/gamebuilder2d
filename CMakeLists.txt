@@ -17,7 +17,8 @@ if (MSVC)
 endif()
 
 # Include sub-projects conditionally by platform/toolchain
-if (CMAKE_SYSTEM_NAME STREQUAL "PSP")
+set(BUILD_FOR_PSP "${BUILD_FOR_PSP}" CACHE BOOL "Force building only PSP targets")
+if (BUILD_FOR_PSP OR CMAKE_SYSTEM_NAME STREQUAL "PSP")
   add_subdirectory ("RunTime2dPSP")
 else()
   add_subdirectory ("GameBuilder2d")
