@@ -17,7 +17,8 @@ int main()
     logger->set_pattern("[%T] [%n] [%l]: %v");
     logger->info("GameBuilder2d starting up");
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
-    InitWindow(1000, 700, "GameBuilder2d + rlImGui");
+    InitWindow(1920, 1080
+        , "GameBuilder2d + rlImGui");
     SetTargetFPS(60);
 
     rlImGuiSetup(true);
@@ -36,8 +37,9 @@ int main()
         rlImGuiEnd();
 
         EndDrawing();
-        logger->debug("Frame rendered");
     }
+
+    logger->debug("Exiting GameBuilder2d");
     // Save layout before shutting down ImGui
     wm.saveLayout();
     rlImGuiShutdown();
