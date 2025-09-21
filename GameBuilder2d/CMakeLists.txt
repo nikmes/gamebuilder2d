@@ -49,14 +49,50 @@ add_library(imgui STATIC
 target_include_directories(imgui PUBLIC ${imgui_SOURCE_DIR})
 target_compile_definitions(imgui PUBLIC IMGUI_DEFINE_MATH_OPERATORS)
 
+# lwlog logging library (workaround upstream CMake by building target locally)
+if (NOT TARGET lwlog::lwlog_lib)
+  FetchContent_Declare(
+    lwlog
+    GIT_REPOSITORY https://github.com/ChristianPanov/lwlog.git
+    GIT_TAG v1.4.0
+  )
+  if (POLICY CMP0169)
+    cmake_policy(PUSH)
+    cmake_policy(SET CMP0169 OLD)
+  endif()
+  FetchContent_Populate(lwlog)
+  if (POLICY CMP0169)
+    cmake_policy(POP)
+  endif()
+  set(LWLOG_INCLUDE_DIR ${lwlog_SOURCE_DIR}/lwlog/include)
+  add_library(lwlog_lib STATIC
+    ${LWLOG_INCLUDE_DIR}/details/topic_registry.cpp
+    ${LWLOG_INCLUDE_DIR}/details/pattern/attribute.cpp
+  )
+  target_compile_features(lwlog_lib PUBLIC cxx_std_17)
+  target_include_directories(lwlog_lib PUBLIC ${LWLOG_INCLUDE_DIR})
+  if (MSVC)
+    target_compile_options(lwlog_lib PRIVATE /wd4715)
+  endif()
+  add_library(lwlog::lwlog_lib ALIAS lwlog_lib)
+  find_package(Threads REQUIRED)
+  target_link_libraries(lwlog_lib PRIVATE Threads::Threads)
+endif()
+
 # ImGuiFileDialog
 FetchContent_Declare(
   imguifiledialog
   GIT_REPOSITORY https://github.com/aiekick/ImGuiFileDialog.git
   GIT_TAG master
 )
-FetchContent_MakeAvailable(imguifiledialog)
-FetchContent_GetProperties(imguifiledialog)
+if (POLICY CMP0169)
+  cmake_policy(PUSH)
+  cmake_policy(SET CMP0169 OLD)
+endif()
+FetchContent_Populate(imguifiledialog)
+if (POLICY CMP0169)
+  cmake_policy(POP)
+endif()
 add_library(imguifiledialog STATIC
   ${imguifiledialog_SOURCE_DIR}/ImGuiFileDialog.cpp
 )
@@ -91,7 +127,7 @@ if (NOT TARGET rlimgui AND NOT TARGET rlImGui)
   target_link_libraries(rlImGui PUBLIC raylib imgui)
 endif()
 
-target_link_libraries(GameBuilder2d PRIVATE raylib rlImGui imgui imguifiledialog)
+target_link_libraries(GameBuilder2d PRIVATE raylib rlImGui imgui imguifiledialog lwlog::lwlog_lib)
 
 if (WIN32)
   target_link_libraries(GameBuilder2d PRIVATE winmm)

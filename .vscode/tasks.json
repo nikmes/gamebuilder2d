@@ -53,21 +53,7 @@
       "group": { "kind": "test", "isDefault": true },
       "problemMatcher": []
     },
-    {
-      "label": "WSL: Run (RunTime2d)",
-      "type": "shell",
-      "command": "wsl.exe",
-      "args": [
-        "--cd",
-        "${workspaceFolder}/build-linux/RunTime2d",
-        "-e",
-        "bash",
-        "-lc",
-        "./RunTime2d"
-      ],
-      "group": { "kind": "test" },
-      "problemMatcher": []
-    },
+    
     {
       "label": "WSL: Clean",
       "type": "shell",
@@ -113,6 +99,26 @@
       "group": "build",
       "problemMatcher": ["$gcc"],
       "dependsOn": ["WSL: Configure (Ninja, Debug) [requires ninja]"]
+    }
+    ,
+    {
+      "label": "CMake: Configure (Windows VS2022 x64 Debug)",
+      "type": "shell",
+      "command": "cmake",
+      "args": ["--preset", "windows-vs2022-x64-debug"],
+      "group": "build",
+      "problemMatcher": ["$msCompile"],
+      "detail": "Configure using CMake Preset"
+    },
+    {
+      "label": "CMake: Build (Windows VS2022 x64 Debug)",
+      "type": "shell",
+      "command": "cmake",
+      "args": ["--build", "--preset", "windows-vs2022-x64-debug"],
+      "group": { "kind": "build" },
+      "dependsOn": ["CMake: Configure (Windows VS2022 x64 Debug)"],
+      "problemMatcher": ["$msCompile"],
+      "detail": "Build using CMake Preset"
     }
   ]
 }

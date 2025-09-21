@@ -1,0 +1,13 @@
+{
+  "cmake.useCMakePresets": "always",
+  "cmake.configureOnOpen": true,
+  "cmake.configurePreset": "windows-vs2022-x64-debug",
+  "cmake.buildPreset": "windows-vs2022-x64-debug",
+  "cmake.testPreset": null,
+  "cmake.loggingLevel": "info",
+  "cmake.sourceDirectory": "${workspaceFolder}",
+  "cmake.buildDirectory": "${workspaceFolder}/build-vs-2022-x64-rlimgui",
+  "cmake.ctestArgs": ["-j"],
+  "cmake.parallelJobs": 8,
+  "cmake.powershellPath": "C:/Program Files/PowerShell/7/pwsh.exe"
+}

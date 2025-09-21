@@ -75,6 +75,29 @@ cmake --build --preset linux-debug
 - Tasks: see `.vscode/tasks.json` for WSL Configure/Build/Run tasks.
 - Debugging (WSL): a gdb-based launch configuration is recommended (requires `gdb` in WSL).
 
+## VS Code: CMake Tools
+
+The repo includes CMake Presets and VS Code settings for [CMake Tools]. On open, the extension will auto-configure with the preset `windows-vs2022-x64-debug`.
+
+- Configure/Build: use the CMake Tools status bar to select preset and build, or run:
+	- Configure: `CMake: Configure`
+	- Build: `CMake: Build`
+- Presets: change via `CMake: Select Configure Preset`.
+
+Settings are in `.vscode/settings.json`:
+- `cmake.useCMakePresets`: `"always"`
+- `cmake.configurePreset`: `windows-vs2022-x64-debug`
+- `cmake.buildPreset`: `windows-vs2022-x64-debug`
+
+Debugging on Windows:
+- Use VS Code launch config: "Debug GameBuilder2d (VS)".
+- It will build with the preset and start the executable.
+
+Alternative: Debug the selected CMake target
+- Select the target in the CMake Tools status bar (e.g., GameBuilder2d).
+- Use the launch config: "CMake: Debug current target (Windows)".
+- This uses `${command:cmake.launchTargetPath}` so it tracks whichever target is active.
+
 ## Project structure
 
 - `CMakeLists.txt` (root): project, MSVC config, subdirectory include
@@ -83,15 +106,13 @@ cmake --build --preset linux-debug
 - `CMakePresets.json`: presets for Windows (VS 2022) and Linux
 - `.vscode/tasks.json`: WSL tasks for configure/build/run
 
-## Targets
+## Target
 - `GameBuilder2d`: Raylib + ImGui prototype app.
-- `RunTime2d`: Minimal console app that prints "Hello, world!".
 
 ### Run (WSL/Linux)
 After building with Unix Makefiles:
 
 ```powershell
-wsl.exe -e bash -lc "cd /mnt/c/Users/<your-user>/source/repos/GameBuilder2d/build-linux/RunTime2d; ./RunTime2d"
 wsl.exe -e bash -lc "cd /mnt/c/Users/<your-user>/source/repos/GameBuilder2d/build-linux/GameBuilder2d; ./GameBuilder2d"
 ```
 

@@ -6,11 +6,16 @@
 #include "rlImGui.h"
 #include "imgui.h"
 #include "window/WindowManager.h"
+#include <memory>
+#include <lwlog.h>
 
 using namespace std;
 
 int main()
 {
+    auto logger = std::make_shared<lwlog::console_logger>("GB2D");
+    logger->set_pattern("[%T] [%n] [%l]: %v");
+    logger->info("GameBuilder2d starting up");
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     InitWindow(1000, 700, "GameBuilder2d + rlImGui");
     SetTargetFPS(60);
@@ -31,6 +36,7 @@ int main()
         rlImGuiEnd();
 
         EndDrawing();
+        logger->debug("Frame rendered");
     }
     // Save layout before shutting down ImGui
     wm.saveLayout();

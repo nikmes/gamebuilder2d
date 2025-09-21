@@ -19,7 +19,7 @@
 ## Format: `[ID] [P?] Description`
 
 ## Phase 3.1: Setup
-- [x] T001 Ensure build targets exist or add stubs for WindowManager in `GameBuilder2d/src` and `RunTime2d/src` as needed
+- [x] T001 Ensure build target exists or add stubs for WindowManager in `GameBuilder2d/src` as needed
 - [ ] T002 [P] Add test scaffolding directories `tests/contract/`, `tests/integration/`, `tests/unit/` under repo root (docs-only placeholders if code tests not used)
 - [ ] T003 [P] Add developer docs link in `README.md` to quickstart at `specs/001-windowmanager-will-be/quickstart.md`
 
@@ -78,7 +78,6 @@ Run in parallel:
 - Default docked layout implemented via ImGui DockBuilder (Scene/Inspector/Console).
 - `renderUI()` integrates full-screen dockspace and window creation menu.
 - Persistence: auto-load `last` on startup; auto-save on shutdown; named layouts supported.
-- `RunTime2d` left unchanged per constraint; main loop lives in `GameBuilder2d`.
  - Docking:
     - Explicit region docking implemented in `dockWindow` (Left/Right/Top/Bottom/Center-as-tab).
     - Visual dock targets overlay with window drag handle for drag-and-drop docking.

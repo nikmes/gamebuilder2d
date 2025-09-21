@@ -51,6 +51,26 @@
         "pipeArgs": ["-e", "bash", "-lc"],
         "debuggerPath": "/usr/bin/gdb"
       }
+    },
+    {
+      "name": "Debug GameBuilder2d (VS)",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build-vs-2022-x64-rlimgui/GameBuilder2d/Debug/GameBuilder2d.exe",
+      "args": [],
+      "cwd": "${workspaceFolder}/build-vs-2022-x64-rlimgui/GameBuilder2d/Debug",
+      "console": "integratedTerminal",
+      "preLaunchTask": "CMake: Build (Windows VS2022 x64 Debug)"
+    },
+    {
+      "name": "CMake: Debug current target (Windows)",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "program": "${command:cmake.launchTargetPath}",
+      "cwd": "${command:cmake.launchTargetDirectory}",
+      "console": "integratedTerminal",
+      "preLaunchTask": "CMake: Build (Windows VS2022 x64 Debug)",
+      "presentation": { "group": "cmake" }
     }
   ]
 }
