@@ -18,3 +18,9 @@ endif()
 
 # Include sub-projects.
 add_subdirectory ("GameBuilder2d")
+
+# Tests
+include(CTest)
+if (BUILD_TESTING)
+  add_subdirectory(tests)
+endif()

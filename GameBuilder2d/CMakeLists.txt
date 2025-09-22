@@ -49,6 +49,31 @@ add_library(imgui STATIC
 target_include_directories(imgui PUBLIC ${imgui_SOURCE_DIR})
 target_compile_definitions(imgui PUBLIC IMGUI_DEFINE_MATH_OPERATORS)
 
+# JSON library (nlohmann/json)
+FetchContent_Declare(
+  nlohmann_json
+  GIT_REPOSITORY https://github.com/nlohmann/json.git
+  GIT_TAG v3.11.3
+)
+FetchContent_MakeAvailable(nlohmann_json)
+
+# Configuration service library
+add_library(gb2d_configuration
+  "src/services/configuration/ConfigurationManager.h"
+  "src/services/configuration/ConfigurationManager.cpp"
+  "src/services/configuration/logging.h"
+  "src/services/configuration/logging.cpp"
+  "src/services/configuration/paths.h"
+  "src/services/configuration/paths.cpp"
+  "src/services/configuration/json_io.h"
+  "src/services/configuration/json_io.cpp"
+  "src/services/configuration/validate.h"
+  "src/services/configuration/validate.cpp"
+)
+target_include_directories(gb2d_configuration PUBLIC "src")
+set_property(TARGET gb2d_configuration PROPERTY CXX_STANDARD 20)
+target_link_libraries(gb2d_configuration PUBLIC nlohmann_json::nlohmann_json)
+
 # lwlog logging library (workaround upstream CMake by building target locally)
 if (NOT TARGET lwlog::lwlog_lib)
   FetchContent_Declare(
@@ -127,7 +152,7 @@ if (NOT TARGET rlimgui AND NOT TARGET rlImGui)
   target_link_libraries(rlImGui PUBLIC raylib imgui)
 endif()
 
-target_link_libraries(GameBuilder2d PRIVATE raylib rlImGui imgui imguifiledialog lwlog::lwlog_lib)
+target_link_libraries(GameBuilder2d PRIVATE raylib rlImGui imgui imguifiledialog lwlog::lwlog_lib gb2d_configuration)
 
 if (WIN32)
   target_link_libraries(GameBuilder2d PRIVATE winmm)
