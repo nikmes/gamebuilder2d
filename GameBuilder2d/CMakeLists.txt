@@ -4,18 +4,24 @@
 
 cmake_policy(SET CMP0077 NEW)
 
-# Add source to this project's executable.
+# Add window management as a separate static library
+add_library(gb2d_window STATIC
+  "src/services/window/Window.h"
+  "src/services/window/DockRegion.h"
+  "src/services/window/Layout.h"
+  "src/services/window/WindowManager.h"
+  "src/services/window/Window.cpp"
+  "src/services/window/DockRegion.cpp"
+  "src/services/window/Layout.cpp"
+  "src/services/window/WindowManager.cpp"
+)
+target_include_directories(gb2d_window PUBLIC "src")
+set_property(TARGET gb2d_window PROPERTY CXX_STANDARD 20)
+
+# Add source to this project's executable (app entry only)
 add_executable (GameBuilder2d
   "src/GameBuilder2d.cpp"
   "src/GameBuilder2d.h"
-  "src/window/Window.h"
-  "src/window/DockRegion.h"
-  "src/window/Layout.h"
-  "src/window/WindowManager.h"
-  "src/window/Window.cpp"
-  "src/window/DockRegion.cpp"
-  "src/window/Layout.cpp"
-  "src/window/WindowManager.cpp"
 )
 
 set_property(TARGET GameBuilder2d PROPERTY CXX_STANDARD 20)
@@ -152,7 +158,10 @@ if (NOT TARGET rlimgui AND NOT TARGET rlImGui)
   target_link_libraries(rlImGui PUBLIC raylib imgui)
 endif()
 
-target_link_libraries(GameBuilder2d PRIVATE raylib rlImGui imgui imguifiledialog lwlog::lwlog_lib gb2d_configuration)
+# Window library depends on ImGui, file dialog, and raylib
+target_link_libraries(gb2d_window PUBLIC imgui imguifiledialog raylib)
+
+target_link_libraries(GameBuilder2d PRIVATE raylib rlImGui imgui imguifiledialog lwlog::lwlog_lib gb2d_configuration gb2d_window)
 
 if (WIN32)
   target_link_libraries(GameBuilder2d PRIVATE winmm)

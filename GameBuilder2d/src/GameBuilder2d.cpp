@@ -5,7 +5,7 @@
 #include "raylib.h"
 #include "rlImGui.h"
 #include "imgui.h"
-#include "window/WindowManager.h"
+#include "services/window/WindowManager.h"
 #include <memory>
 #include <lwlog.h>
 #include "services/configuration/ConfigurationManager.h"
@@ -18,6 +18,7 @@ int main()
     auto logger = std::make_shared<lwlog::console_logger>("GB2D");
     logger->set_pattern("[%T] [%n] [%l]: %v");
     logger->info("GameBuilder2d starting up");
+    
     gb2d::cfglog::set_sink([logger](gb2d::cfglog::Level lvl, const char* msg){
         switch (lvl) {
         case gb2d::cfglog::Level::Info: logger->info("%s", msg); break;
