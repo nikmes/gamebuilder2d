@@ -19,6 +19,7 @@ add_executable(config_tests
   unit/config/test_atomic_save.cpp
   unit/config/test_change_notifications.cpp
   unit/config/test_export.cpp
+  unit/config/test_boundaries.cpp
   unit/config/test_validate.cpp
   integration/test_config_e2e.cpp
 )

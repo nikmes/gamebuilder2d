@@ -5,6 +5,11 @@
 
 namespace gb2d::jsonio {
 std::optional<nlohmann::json> readJson(const std::string& path) {
+	namespace fs = std::filesystem;
+	std::error_code ec;
+	auto sz = fs::file_size(path, ec);
+	if (ec) return std::nullopt;
+	if (sz > kMaxConfigBytes) return std::nullopt;
 	std::ifstream ifs(path, std::ios::binary);
 	if (!ifs) return std::nullopt;
 	try {
