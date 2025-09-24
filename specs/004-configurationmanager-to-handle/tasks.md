@@ -43,7 +43,7 @@
 
 ## Phase 3.4: Integration
 - [x] T020 Integrate with startup: call `ConfigurationManager::loadOrDefault()` in `GameBuilder2d/src/GameBuilder2d.cpp`
-- [x] T021 Log warnings on fallback/override/migration in `ConfigurationManager.cpp` (via existing lwlog)
+- [x] T021 Log warnings on fallback/override/migration in `ConfigurationManager.cpp` (removed; ConfigurationManager is silent now)
 - [x] T022 End-to-end test using temp directory in `tests/integration/test_config_e2e.cpp`
 
 ## Phase 3.5: Polish

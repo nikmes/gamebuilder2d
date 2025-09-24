@@ -121,6 +121,7 @@ wsl.exe -e bash -lc "cd /mnt/c/Users/<your-user>/source/repos/GameBuilder2d/buil
 - raylib: built as a static lib; GLFW and platform specifics are handled automatically.
 - rlImGui: brought in via `FetchContent_MakeAvailable`; we alias/export a stable `rlImGui` target.
 - Dear ImGui: sources are fetched and compiled into a local static lib.
+- Logging: none by default. The app currently avoids external logging dependencies; add your preferred logger if needed.
 
 ## Troubleshooting
 

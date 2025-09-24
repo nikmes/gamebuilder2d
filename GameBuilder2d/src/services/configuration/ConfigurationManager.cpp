@@ -10,7 +10,6 @@ using nlohmann::json;
 #include <mutex>
 #include <map>
 #include <optional>
-#include "logging.h"
 
 #if !defined(_WIN32)
 extern "C" char **environ;
@@ -232,11 +231,7 @@ void ConfigurationManager::loadOrDefault() {
 	ensure_path(c, "window.height") = 720;
 	ensure_path(c, "ui.theme") = "dark";
 	size_t overrides = apply_env_overrides(c);
-	if (overrides > 0) {
-		cfglog::warning("Applied %zu environment overrides (GB2D_*) to defaults", overrides);
-	} else {
-		cfglog::info("Loaded default configuration");
-	}
+	(void)overrides; // no logging
 }
 
 bool ConfigurationManager::load() {
@@ -251,9 +246,9 @@ bool ConfigurationManager::load() {
 			bak += ".bak";
 			std::filesystem::remove(bak, ec);
 			std::filesystem::rename(p, bak, ec);
-			cfglog::warning("Config unreadable/corrupt at '%s'. Backed up to '%s'. Falling back to defaults.", path.c_str(), bak.string().c_str());
+			(void)bak; // silent fallback
 		} else {
-			cfglog::info("No existing config at '%s'. Using defaults.", path.c_str());
+			// silent default
 		}
 		loadOrDefault();
 		return false;
@@ -262,20 +257,13 @@ bool ConfigurationManager::load() {
 	int fromVer = 0;
 	MigrateResult mr = migrate_if_needed(path, *j, &fromVer);
 	if (mr == MigrateResult::Fallback) {
-		cfglog::warning("Config version %d is newer than supported (%d). Falling back to defaults; leaving file unchanged.", fromVer, kCurrentConfigVersion);
 		loadOrDefault();
 		return false;
 	}
-	if (mr == MigrateResult::Migrated) {
-		std::filesystem::path p(path);
-		std::filesystem::path bak = p; bak += ".bak";
-		cfglog::warning("Migrated config from version %d to %d. Backup saved to '%s'.", fromVer, kCurrentConfigVersion, bak.string().c_str());
-	}
+	(void)fromVer; // suppress unused if no logging
 	cfg() = std::move(*j);
 	size_t overrides2 = apply_env_overrides(cfg());
-	if (overrides2 > 0) {
-		cfglog::warning("Applied %zu environment overrides (GB2D_*) after load", overrides2);
-	}
+	(void)overrides2;
 	return true;
 }
 

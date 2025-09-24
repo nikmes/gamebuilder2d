@@ -10,6 +10,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(Catch2)
 
 add_executable(config_tests
+  test_bootstrap.cpp
   unit/config/test_placeholder.cpp
   unit/config/test_load_defaults.cpp
   unit/config/test_load_valid.cpp

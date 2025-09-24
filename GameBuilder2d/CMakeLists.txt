@@ -67,8 +67,6 @@ FetchContent_MakeAvailable(nlohmann_json)
 add_library(gb2d_configuration
   "src/services/configuration/ConfigurationManager.h"
   "src/services/configuration/ConfigurationManager.cpp"
-  "src/services/configuration/logging.h"
-  "src/services/configuration/logging.cpp"
   "src/services/configuration/paths.h"
   "src/services/configuration/paths.cpp"
   "src/services/configuration/json_io.h"
@@ -80,35 +78,7 @@ target_include_directories(gb2d_configuration PUBLIC "src")
 set_property(TARGET gb2d_configuration PROPERTY CXX_STANDARD 20)
 target_link_libraries(gb2d_configuration PUBLIC nlohmann_json::nlohmann_json)
 
-# lwlog logging library (workaround upstream CMake by building target locally)
-if (NOT TARGET lwlog::lwlog_lib)
-  FetchContent_Declare(
-    lwlog
-    GIT_REPOSITORY https://github.com/ChristianPanov/lwlog.git
-    GIT_TAG v1.4.0
-  )
-  if (POLICY CMP0169)
-    cmake_policy(PUSH)
-    cmake_policy(SET CMP0169 OLD)
-  endif()
-  FetchContent_Populate(lwlog)
-  if (POLICY CMP0169)
-    cmake_policy(POP)
-  endif()
-  set(LWLOG_INCLUDE_DIR ${lwlog_SOURCE_DIR}/lwlog/include)
-  add_library(lwlog_lib STATIC
-    ${LWLOG_INCLUDE_DIR}/details/topic_registry.cpp
-    ${LWLOG_INCLUDE_DIR}/details/pattern/attribute.cpp
-  )
-  target_compile_features(lwlog_lib PUBLIC cxx_std_17)
-  target_include_directories(lwlog_lib PUBLIC ${LWLOG_INCLUDE_DIR})
-  if (MSVC)
-    target_compile_options(lwlog_lib PRIVATE /wd4715)
-  endif()
-  add_library(lwlog::lwlog_lib ALIAS lwlog_lib)
-  find_package(Threads REQUIRED)
-  target_link_libraries(lwlog_lib PRIVATE Threads::Threads)
-endif()
+## lwlog removed
 
 # ImGuiFileDialog
 FetchContent_Declare(
@@ -161,7 +131,7 @@ endif()
 # Window library depends on ImGui, file dialog, and raylib
 target_link_libraries(gb2d_window PUBLIC imgui imguifiledialog raylib)
 
-target_link_libraries(GameBuilder2d PRIVATE raylib rlImGui imgui imguifiledialog lwlog::lwlog_lib gb2d_configuration gb2d_window)
+target_link_libraries(GameBuilder2d PRIVATE raylib rlImGui imgui imguifiledialog gb2d_configuration gb2d_window)
 
 if (WIN32)
   target_link_libraries(GameBuilder2d PRIVATE winmm)

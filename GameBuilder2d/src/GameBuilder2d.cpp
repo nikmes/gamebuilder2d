@@ -7,25 +7,14 @@
 #include "imgui.h"
 #include "services/window/WindowManager.h"
 #include <memory>
-#include <lwlog.h>
 #include "services/configuration/ConfigurationManager.h"
-#include "services/configuration/logging.h"
 
 using namespace std;
 
 int main()
 {
-    auto logger = std::make_shared<lwlog::console_logger>("GB2D");
-    logger->set_pattern("[%T] [%n] [%l]: %v");
-    logger->info("GameBuilder2d starting up");
-    
-    gb2d::cfglog::set_sink([logger](gb2d::cfglog::Level lvl, const char* msg){
-        switch (lvl) {
-        case gb2d::cfglog::Level::Info: logger->info("%s", msg); break;
-        case gb2d::cfglog::Level::Warning: logger->warning("%s", msg); break;
-        case gb2d::cfglog::Level::Debug: logger->debug("%s", msg); break;
-        }
-    });
+    // Basic startup notice (no external logging dependency)
+    // printf("GameBuilder2d starting up\n");
 
     gb2d::ConfigurationManager::loadOrDefault();
 
@@ -63,7 +52,7 @@ int main()
         EndDrawing();
     }
 
-    logger->debug("Exiting GameBuilder2d");
+    // printf("Exiting GameBuilder2d\n");
     // Save layout before shutting down ImGui
     wm.saveLayout();
     rlImGuiShutdown();
