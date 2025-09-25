@@ -853,6 +853,7 @@ namespace {
             lang.mIdentifiers["WARN"].mDeclaration  = "Warn level";
             lang.mIdentifiers["ERROR"].mDeclaration = "Error level";
             lang.mIdentifiers["CRIT"].mDeclaration  = "Critical level";
+            lang.mIdentifiers["TS"].mDeclaration    = "Timestamp"; // synthetic token we inject for dim styling
             // Timestamps: we won't regex highlight strongly; they'll remain Default/dim manually via palette tweak later.
             lang.mAutoIndentation = false;
             lang.mTokenize = nullptr; // rely on default simple tokenization
@@ -890,6 +891,7 @@ void gb2d::WindowManager::initLogEditorIfNeeded() {
     //  WARN  -> Preprocessor (yellowish)
     //  ERROR -> KnownIdentifier (reddish)
     //  CRIT  -> Keyword (bright red)
+    //  TS    -> Use Comment color (dim)
     // Palette indices are fixed in upstream enum; we rely on existing semantics.
     // Optionally darken background slightly
     palette[(int)TextEditor::PaletteIndex::Background] = 0xFF1E1E1E; // dark gray
@@ -911,11 +913,18 @@ void gb2d::WindowManager::rebuildLogEditorIfNeeded() {
     if (snapshotSize == log_last_snapshot_size_ && h == log_last_hash_) {
         return; // nothing changed that affects filtered view
     }
-
+    // Determine if user is at (or near) bottom before rebuild for refined autoscroll logic.
     bool should_autoscroll = false;
     if (console_autoscroll_) {
-        // Heuristic: if last rebuild ended at end-of-buffer (we track by having autoscrolled previously) we autoscroll again.
-        should_autoscroll = true; // basic parity; refinement can be added later.
+        // We approximate bottom detection: cursor line close to last line OR previously recorded as at bottom.
+        auto totalBefore = log_editor_.GetTotalLines();
+        auto cursor = log_editor_.GetCursorPosition();
+        if (totalBefore == 0) {
+            log_user_was_at_bottom_ = true;
+        } else {
+            log_user_was_at_bottom_ = (cursor.mLine >= totalBefore - 2);
+        }
+        should_autoscroll = log_user_was_at_bottom_;
     }
 
     // Build filtered concatenated text
@@ -940,10 +949,39 @@ void gb2d::WindowManager::rebuildLogEditorIfNeeded() {
             std::transform(needle.begin(), needle.end(), needle.begin(), [](unsigned char c){ return (char)tolower(c); });
             if (hay.find(needle) == std::string::npos) continue;
         }
-        // Expected log line format already includes timestamp & level in message pattern, but we prefix level token just in case.
-        out.append(gb2d::logging::level_to_label(ln.level));
-        out.append(" ");
-        out.append(ln.text);
+        // Expected log line pattern: e.message includes formatted text with timestamp/level pattern "[HH:MM:SS] [LEVEL] msg" (per LogManager config).
+        // For consistent tokenization & highlighting, we'll insert a synthetic TS token for timestamp if pattern matches.
+        // We also prepend the level label (again) if it's absent at line start for safety.
+        std::string_view raw = ln.text;
+        bool has_ts = raw.size() > 10 && raw[0] == '[' && raw[9] == ']';
+        if (has_ts) {
+            // Extract timestamp portion
+            std::string_view ts = raw.substr(0, 10); // [HH:MM:SS]
+            out.append("TS "); // synthetic token to color timestamp via identifier (mapped to dim color)
+            out.append(ts);
+            out.push_back(' ');
+            raw.remove_prefix(10);
+            // Skip an optional space after timestamp
+            if (!raw.empty() && raw[0] == ' ') raw.remove_prefix(1);
+        }
+        // Ensure level token present before the rest for highlighting; detect typical [LEVEL] form.
+        bool has_level_bracket = raw.size() > 2 && raw[0] == '[';
+        if (has_level_bracket) {
+            // Copy up to first space after closing bracket
+            size_t close = raw.find(']');
+            if (close != std::string::npos) {
+                std::string levelToken(raw.substr(1, close - 1));
+                out.append(levelToken);
+                out.push_back(' ');
+                raw.remove_prefix(close + 1);
+                if (!raw.empty() && raw[0] == ' ') raw.remove_prefix(1);
+            }
+        } else {
+            // Fallback: append our own level token
+            out.append(gb2d::logging::level_to_label(ln.level));
+            out.push_back(' ');
+        }
+        out.append(raw);
         if (!out.empty() && out.back() != '\n') out.push_back('\n');
     }
     log_editor_.SetText(out);

@@ -101,6 +101,7 @@ private:
     bool log_editor_initialized_{false};   // Lazy init flag
     size_t log_last_snapshot_size_{0};     // Last snapshot size used to build editor text
     uint64_t log_last_hash_{0};            // Hash of (snapshot_size, level_mask, filter_text)
+    bool log_user_was_at_bottom_{true};    // Track if user was at bottom before rebuild for refined autoscroll
 
     // Text Editor state (multi-tab)
     struct EditorTab {
