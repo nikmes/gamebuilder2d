@@ -2,6 +2,10 @@
 
 #include <imgui.h>
 
+// NOTE: This header is force-included for the ImGuiColorTextEdit target via CMake (/FI or -include)
+// If you see build errors about missing GetKeyIndex or PushAllowKeyboardFocus, verify the compile options
+// in GameBuilder2d/GameBuilder2d/CMakeLists.txt still list this file for the imguicolortextedit target.
+
 namespace ImGui {
 
 // ImGui 1.87-era API provided GetKeyIndex which was removed later.

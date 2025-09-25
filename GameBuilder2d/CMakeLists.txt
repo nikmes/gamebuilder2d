@@ -17,6 +17,10 @@ add_library(gb2d_window STATIC
 )
 target_include_directories(gb2d_window PUBLIC "src")
 set_property(TARGET gb2d_window PROPERTY CXX_STANDARD 20)
+target_compile_options(gb2d_window PRIVATE
+  $<$<CXX_COMPILER_ID:MSVC>:/FI"${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/ImGuiColorTextEdit/imgui_compat_shim.h">
+  $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-include ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/ImGuiColorTextEdit/imgui_compat_shim.h>
+)
 
 # Add source to this project's executable (app entry only)
 add_executable (GameBuilder2d
@@ -25,6 +29,10 @@ add_executable (GameBuilder2d
 )
 
 set_property(TARGET GameBuilder2d PROPERTY CXX_STANDARD 20)
+target_compile_options(GameBuilder2d PRIVATE
+  $<$<CXX_COMPILER_ID:MSVC>:/FI"${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/ImGuiColorTextEdit/imgui_compat_shim.h">
+  $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-include ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/ImGuiColorTextEdit/imgui_compat_shim.h>
+)
 
 include(FetchContent)
 

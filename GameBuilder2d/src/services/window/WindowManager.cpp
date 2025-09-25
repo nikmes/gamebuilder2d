@@ -14,6 +14,7 @@
 #include "services/logger/LogManager.h"
 // ImGuiColorTextEdit
 #include <TextEditor.h>
+#include <functional>
 
 namespace gb2d {
 
@@ -574,97 +575,67 @@ void WindowManager::renderUI() {
             } else if (w.title == "Text Editor") {
                 renderEditorWindow();
             } else if (w.title == "Console") {
-                // Controls row: level filter, search, max lines, buffer cap, autoscroll, clear
+                // New TextEditor-based console UI
+                initLogEditorIfNeeded();
+
+                // Settings / controls row
                 ImGui::SetNextItemWidth(120);
                 ImGui::InputInt("Max lines", &console_max_lines_);
                 if (console_max_lines_ < 100) console_max_lines_ = 100;
                 ImGui::SameLine();
                 ImGui::SetNextItemWidth(120);
-                static int bufCapTmp = 0;
-                bufCapTmp = (int)console_buffer_cap_;
-                if (ImGui::InputInt("Buffer cap", &bufCapTmp)) {
-                    if (bufCapTmp < 1000) bufCapTmp = 1000;
-                    console_buffer_cap_ = (size_t)bufCapTmp;
+                static int bufCapTmp2 = 0; bufCapTmp2 = (int)console_buffer_cap_;
+                if (ImGui::InputInt("Buffer cap", &bufCapTmp2)) {
+                    if (bufCapTmp2 < 1000) bufCapTmp2 = 1000;
+                    console_buffer_cap_ = (size_t)bufCapTmp2;
                     gb2d::logging::set_log_buffer_capacity(console_buffer_cap_);
                 }
                 ImGui::SameLine();
                 ImGui::Checkbox("Autoscroll", &console_autoscroll_);
                 ImGui::SameLine();
-                if (ImGui::Button("Clear")) { gb2d::logging::clear_log_buffer(); }
+                if (ImGui::Button("Clear")) {
+                    gb2d::logging::clear_log_buffer();
+                    log_editor_.SetText("");
+                    log_last_snapshot_size_ = 0;
+                    log_last_hash_ = 0;
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Copy")) {
+                    auto txt = log_editor_.GetText();
+                    ImGui::SetClipboardText(txt.c_str());
+                }
 
-                // Level filter as toggle buttons
-                auto lvlBtn = [&](const char* label, uint32_t bit){
+                auto lvlBtn2 = [&](const char* label, uint32_t bit){
                     bool on = (console_level_mask_ & bit) != 0;
                     if (on) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f,0.6f,0.2f,1.0f));
                     if (ImGui::SmallButton(label)) {
                         console_level_mask_ ^= bit;
-                        if ((console_level_mask_ & 0x3F) == 0) console_level_mask_ = 0x3F; // avoid empty
+                        if ((console_level_mask_ & 0x3F) == 0) console_level_mask_ = 0x3F;
                     }
                     if (on) ImGui::PopStyleColor();
                     ImGui::SameLine();
                 };
-                lvlBtn("Trace", 1u<<0);
-                lvlBtn("Debug", 1u<<1);
-                lvlBtn("Info",  1u<<2);
-                lvlBtn("Warn",  1u<<3);
-                lvlBtn("Error", 1u<<4);
-                lvlBtn("Crit",  1u<<5);
+                lvlBtn2("Trace", 1u<<0);
+                lvlBtn2("Debug", 1u<<1);
+                lvlBtn2("Info",  1u<<2);
+                lvlBtn2("Warn",  1u<<3);
+                lvlBtn2("Error", 1u<<4);
+                lvlBtn2("Crit",  1u<<5);
                 ImGui::NewLine();
 
-                // Text search
                 ImGui::SetNextItemWidth(300);
-                char filterBuf[256];
-                std::strncpy(filterBuf, console_text_filter_.c_str(), sizeof(filterBuf));
-                filterBuf[sizeof(filterBuf)-1] = '\0';
-                if (ImGui::InputText("##filter", filterBuf, IM_ARRAYSIZE(filterBuf))) {
-                    console_text_filter_ = filterBuf;
+                char filterBuf2[256];
+                std::strncpy(filterBuf2, console_text_filter_.c_str(), sizeof(filterBuf2));
+                filterBuf2[sizeof(filterBuf2)-1] = '\0';
+                if (ImGui::InputText("##filter", filterBuf2, IM_ARRAYSIZE(filterBuf2))) {
+                    console_text_filter_ = filterBuf2;
                 }
 
-                // Render lines
-                auto lines = gb2d::logging::read_log_lines_snapshot((size_t)console_max_lines_);
-                ImGui::Separator();
-                ImGui::BeginChild("log_lines", ImVec2(0,0), false, ImGuiWindowFlags_HorizontalScrollbar);
-                for (const auto& ln : lines) {
-                    uint32_t bit = 0;
-                    switch (ln.level) {
-                        case gb2d::logging::Level::trace: bit = 1u<<0; break;
-                        case gb2d::logging::Level::debug: bit = 1u<<1; break;
-                        case gb2d::logging::Level::info:  bit = 1u<<2; break;
-                        case gb2d::logging::Level::warn:  bit = 1u<<3; break;
-                        case gb2d::logging::Level::err:   bit = 1u<<4; break;
-                        case gb2d::logging::Level::critical: bit = 1u<<5; break;
-                        case gb2d::logging::Level::off: break;
-                    }
-                    if ((console_level_mask_ & bit) == 0) continue;
-                    if (!console_text_filter_.empty()) {
-                        // Case-insensitive substring match
-                        auto hay = ln.text;
-                        auto needle = console_text_filter_;
-                        std::transform(hay.begin(), hay.end(), hay.begin(), [](unsigned char c){ return (char)tolower(c); });
-                        std::transform(needle.begin(), needle.end(), needle.begin(), [](unsigned char c){ return (char)tolower(c); });
-                        if (hay.find(needle) == std::string::npos) continue;
-                    }
+                // Rebuild editor contents if needed (lines snapshot + filters changed)
+                rebuildLogEditorIfNeeded();
 
-                    ImVec4 col = ImVec4(0.8f,0.8f,0.8f,1.0f);
-                    switch (ln.level) {
-                        case gb2d::logging::Level::trace: col = ImVec4(0.6f,0.6f,0.6f,1.0f); break;
-                        case gb2d::logging::Level::debug: col = ImVec4(0.7f,0.7f,0.9f,1.0f); break;
-                        case gb2d::logging::Level::info: col = ImVec4(0.8f,0.8f,0.8f,1.0f); break;
-                        case gb2d::logging::Level::warn: col = ImVec4(1.0f,0.9f,0.6f,1.0f); break;
-                        case gb2d::logging::Level::err: col = ImVec4(1.0f,0.6f,0.6f,1.0f); break;
-                        case gb2d::logging::Level::critical: col = ImVec4(1.0f,0.3f,0.3f,1.0f); break;
-                        case gb2d::logging::Level::off: break;
-                    }
-                    ImGui::PushStyleColor(ImGuiCol_Text, col);
-                    ImGui::Text("[%s] %s", gb2d::logging::level_to_label(ln.level), ln.text.c_str());
-                    ImGui::PopStyleColor();
-                }
-
-                if (console_autoscroll_) {
-                    float at_bottom = ImGui::GetScrollY() - ImGui::GetScrollMaxY();
-                    if (at_bottom >= -2.0f) ImGui::SetScrollHereY(1.0f);
-                }
-                ImGui::EndChild();
+                // Render read-only log editor
+                log_editor_.Render("##log_editor");
             } else if (w.title.rfind("Preview:", 0) == 0) {
                 auto itp = previews_.find(w.id);
                 if (itp != previews_.end()) {
@@ -851,6 +822,44 @@ WindowManager::ManagedWindow* WindowManager::findByTitle(const std::string& titl
 // ===== Editor helpers implementation =====
 namespace {
     inline std::string toLower(std::string s){ for (auto& c : s) c = (char)tolower((unsigned char)c); return s; }
+
+    // Simple 64-bit FNV-1a hash utility for rebuild change detection
+    uint64_t fnv1a64(const void* data, size_t len, uint64_t seed = 1469598103934665603ull) {
+        uint64_t h = seed;
+        const unsigned char* p = (const unsigned char*)data;
+        for (size_t i = 0; i < len; ++i) {
+            h ^= (uint64_t)p[i];
+            h *= 1099511628211ull;
+        }
+        return h;
+    }
+
+    TextEditor::LanguageDefinition CreateLogLanguageDefinition() {
+        // We piggy-back on identifiers for level highlighting.
+        static bool initialized = false;
+        static TextEditor::LanguageDefinition lang;
+        if (!initialized) {
+            lang.mName = "GB2DLog";
+            lang.mKeywords.clear();
+            lang.mTokenRegexStrings.clear();
+            lang.mCommentStart = ""; // no block comments
+            lang.mCommentEnd = "";
+            lang.mSingleLineComment = "";
+            lang.mCaseSensitive = true;
+            // Map log level tags as known identifiers to enable color override via palette indices.
+            lang.mIdentifiers["TRACE"].mDeclaration = "Trace level";
+            lang.mIdentifiers["DEBUG"].mDeclaration = "Debug level";
+            lang.mIdentifiers["INFO"].mDeclaration  = "Info level";
+            lang.mIdentifiers["WARN"].mDeclaration  = "Warn level";
+            lang.mIdentifiers["ERROR"].mDeclaration = "Error level";
+            lang.mIdentifiers["CRIT"].mDeclaration  = "Critical level";
+            // Timestamps: we won't regex highlight strongly; they'll remain Default/dim manually via palette tweak later.
+            lang.mAutoIndentation = false;
+            lang.mTokenize = nullptr; // rely on default simple tokenization
+            initialized = true;
+        }
+        return lang;
+    }
 }
 
 void gb2d::WindowManager::ensureEditorWindow(bool focus) {
@@ -864,6 +873,89 @@ void gb2d::WindowManager::ensureEditorWindow(bool focus) {
         if (ManagedWindow* e = findByTitle("Text Editor")) e->open = true;
     }
     if (focus) focus_request_window_id_ = editor_.id;
+}
+
+void gb2d::WindowManager::initLogEditorIfNeeded() {
+    if (log_editor_initialized_) return;
+    log_editor_initialized_ = true;
+    log_editor_.SetReadOnly(true);
+    log_editor_.SetShowWhitespaces(false);
+    // Upstream editor variant may not expose line number toggle; they are off by default in dark palette usage.
+    auto palette = TextEditor::GetDarkPalette();
+    // Adjust palette entries for our log levels (KnownIdentifier / PreprocIdentifier / Identifier / Keyword reuse)
+    // We'll treat:
+    //  TRACE -> Comment color variant (dim)
+    //  DEBUG -> Identifier
+    //  INFO  -> Default
+    //  WARN  -> Preprocessor (yellowish)
+    //  ERROR -> KnownIdentifier (reddish)
+    //  CRIT  -> Keyword (bright red)
+    // Palette indices are fixed in upstream enum; we rely on existing semantics.
+    // Optionally darken background slightly
+    palette[(int)TextEditor::PaletteIndex::Background] = 0xFF1E1E1E; // dark gray
+    log_editor_.SetPalette(palette);
+    log_editor_.SetLanguageDefinition(CreateLogLanguageDefinition());
+}
+
+void gb2d::WindowManager::rebuildLogEditorIfNeeded() {
+    // Snapshot current log lines (bounded by console_max_lines_)
+    auto lines = gb2d::logging::read_log_lines_snapshot((size_t)console_max_lines_);
+    size_t snapshotSize = lines.size();
+
+    // Compute hash of inputs
+    uint64_t h = 1469598103934665603ull;
+    h = fnv1a64(&snapshotSize, sizeof(snapshotSize), h);
+    h = fnv1a64(&console_level_mask_, sizeof(console_level_mask_), h);
+    h = fnv1a64(console_text_filter_.data(), console_text_filter_.size(), h);
+
+    if (snapshotSize == log_last_snapshot_size_ && h == log_last_hash_) {
+        return; // nothing changed that affects filtered view
+    }
+
+    bool should_autoscroll = false;
+    if (console_autoscroll_) {
+        // Heuristic: if last rebuild ended at end-of-buffer (we track by having autoscrolled previously) we autoscroll again.
+        should_autoscroll = true; // basic parity; refinement can be added later.
+    }
+
+    // Build filtered concatenated text
+    std::string out;
+    out.reserve(snapshotSize * 64); // rough heuristic
+    for (const auto& ln : lines) {
+        uint32_t bit = 0;
+        switch (ln.level) {
+            case gb2d::logging::Level::trace: bit = 1u<<0; break;
+            case gb2d::logging::Level::debug: bit = 1u<<1; break;
+            case gb2d::logging::Level::info:  bit = 1u<<2; break;
+            case gb2d::logging::Level::warn:  bit = 1u<<3; break;
+            case gb2d::logging::Level::err:   bit = 1u<<4; break;
+            case gb2d::logging::Level::critical: bit = 1u<<5; break;
+            case gb2d::logging::Level::off: default: break;
+        }
+        if ((console_level_mask_ & bit) == 0) continue;
+        if (!console_text_filter_.empty()) {
+            auto hay = ln.text;
+            auto needle = console_text_filter_;
+            std::transform(hay.begin(), hay.end(), hay.begin(), [](unsigned char c){ return (char)tolower(c); });
+            std::transform(needle.begin(), needle.end(), needle.begin(), [](unsigned char c){ return (char)tolower(c); });
+            if (hay.find(needle) == std::string::npos) continue;
+        }
+        // Expected log line format already includes timestamp & level in message pattern, but we prefix level token just in case.
+        out.append(gb2d::logging::level_to_label(ln.level));
+        out.append(" ");
+        out.append(ln.text);
+        if (!out.empty() && out.back() != '\n') out.push_back('\n');
+    }
+    log_editor_.SetText(out);
+    if (should_autoscroll) {
+        auto totalLines = log_editor_.GetTotalLines();
+        if (totalLines > 0) {
+            TextEditor::Coordinates c{ (int)totalLines - 1, 0 };
+            log_editor_.SetCursorPosition(c);
+        }
+    }
+    log_last_snapshot_size_ = snapshotSize;
+    log_last_hash_ = h;
 }
 
 bool gb2d::WindowManager::isTextLikeExtension(const std::string& ext) {

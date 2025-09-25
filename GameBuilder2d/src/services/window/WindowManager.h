@@ -96,6 +96,12 @@ private:
     uint32_t console_level_mask_{0x3F}; // bits: 0=trace,1=debug,2=info,3=warn,4=err,5=critical
     std::string console_text_filter_{};
 
+    // New TextEditor-backed log console state (Phase 1 replacement)
+    TextEditor log_editor_{};              // Read-only view of filtered log
+    bool log_editor_initialized_{false};   // Lazy init flag
+    size_t log_last_snapshot_size_{0};     // Last snapshot size used to build editor text
+    uint64_t log_last_hash_{0};            // Hash of (snapshot_size, level_mask, filter_text)
+
     // Text Editor state (multi-tab)
     struct EditorTab {
         std::string path;      // absolute or relative on open
@@ -120,6 +126,10 @@ private:
     bool saveEditorTab(int index, bool saveAs = false);
     static bool isTextLikeExtension(const std::string& ext);
     static const TextEditor::LanguageDefinition& languageForExtension(const std::string& ext, std::string& outName);
+
+    // Log console helpers
+    void initLogEditorIfNeeded();
+    void rebuildLogEditorIfNeeded();
 };
 
 } // namespace gb2d
