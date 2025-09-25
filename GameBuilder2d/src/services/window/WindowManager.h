@@ -11,6 +11,9 @@
 // ImGuiColorTextEdit editor
 #include <TextEditor.h>
 
+// Include logging definitions (LogLine) needed for incremental log console state.
+#include "services/logger/LogManager.h"
+
 namespace gb2d {
 
 class WindowManager {
@@ -102,6 +105,12 @@ private:
     size_t log_last_snapshot_size_{0};     // Last snapshot size used to build editor text
     uint64_t log_last_hash_{0};            // Hash of (snapshot_size, level_mask, filter_text)
     bool log_user_was_at_bottom_{true};    // Track if user was at bottom before rebuild for refined autoscroll
+    // Use alias to guard against any macro/name collision on 'logging'
+    using LoggingLine = ::gb2d::logging::LogLine;
+    std::vector<LoggingLine> log_prev_raw_; // Last raw snapshot for incremental append decision
+    std::string log_editor_text_cache_;    // Cached full text currently loaded in log_editor_
+    size_t log_prev_emitted_count_{0};      // How many raw lines contributed to current editor text (post-filter)
+    size_t log_prev_char_count_{0};          // Cached character count of editor text to detect no-op rebuilds
 
     // Text Editor state (multi-tab)
     struct EditorTab {

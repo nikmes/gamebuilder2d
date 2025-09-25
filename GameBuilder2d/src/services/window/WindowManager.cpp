@@ -927,10 +927,30 @@ void gb2d::WindowManager::rebuildLogEditorIfNeeded() {
         should_autoscroll = log_user_was_at_bottom_;
     }
 
-    // Build filtered concatenated text
+    bool filters_simple = console_text_filter_.empty();
+    bool can_incremental = (snapshotSize >= log_prev_raw_.size()) && filters_simple && (console_level_mask_ == 0x3F);
+    bool did_incremental = false;
+    bool text_changed = false; // track whether editor text was modified this cycle
+
+    // Build filtered concatenated text (full or partial)
     std::string out;
-    out.reserve(snapshotSize * 64); // rough heuristic
-    for (const auto& ln : lines) {
+    if (!can_incremental) {
+        out.reserve(snapshotSize * 64); // rough heuristic
+    }
+
+    // When incremental: we only process new lines after log_prev_raw_.size()
+    size_t start_index = 0;
+    if (can_incremental) {
+        start_index = log_prev_raw_.size();
+    }
+
+    // If full rebuild, process everything into 'out'. If incremental, gather only new appended portion into 'appendBuf'.
+    std::string appendBuf;
+    if (can_incremental) {
+        appendBuf.reserve((snapshotSize - start_index) * 64);
+    }
+
+    auto processLine = [&](const gb2d::logging::LogLine& ln, std::string& dest){
         uint32_t bit = 0;
         switch (ln.level) {
             case gb2d::logging::Level::trace: bit = 1u<<0; break;
@@ -941,13 +961,13 @@ void gb2d::WindowManager::rebuildLogEditorIfNeeded() {
             case gb2d::logging::Level::critical: bit = 1u<<5; break;
             case gb2d::logging::Level::off: default: break;
         }
-        if ((console_level_mask_ & bit) == 0) continue;
+        if ((console_level_mask_ & bit) == 0) return false;
         if (!console_text_filter_.empty()) {
             auto hay = ln.text;
             auto needle = console_text_filter_;
             std::transform(hay.begin(), hay.end(), hay.begin(), [](unsigned char c){ return (char)tolower(c); });
             std::transform(needle.begin(), needle.end(), needle.begin(), [](unsigned char c){ return (char)tolower(c); });
-            if (hay.find(needle) == std::string::npos) continue;
+            if (hay.find(needle) == std::string::npos) return false;
         }
         // Expected log line pattern: e.message includes formatted text with timestamp/level pattern "[HH:MM:SS] [LEVEL] msg" (per LogManager config).
         // For consistent tokenization & highlighting, we'll insert a synthetic TS token for timestamp if pattern matches.
@@ -957,9 +977,9 @@ void gb2d::WindowManager::rebuildLogEditorIfNeeded() {
         if (has_ts) {
             // Extract timestamp portion
             std::string_view ts = raw.substr(0, 10); // [HH:MM:SS]
-            out.append("TS "); // synthetic token to color timestamp via identifier (mapped to dim color)
-            out.append(ts);
-            out.push_back(' ');
+            dest.append("TS "); // synthetic token to color timestamp via identifier (mapped to dim color)
+            dest.append(ts);
+            dest.push_back(' ');
             raw.remove_prefix(10);
             // Skip an optional space after timestamp
             if (!raw.empty() && raw[0] == ' ') raw.remove_prefix(1);
@@ -971,21 +991,52 @@ void gb2d::WindowManager::rebuildLogEditorIfNeeded() {
             size_t close = raw.find(']');
             if (close != std::string::npos) {
                 std::string levelToken(raw.substr(1, close - 1));
-                out.append(levelToken);
-                out.push_back(' ');
+                dest.append(levelToken);
+                dest.push_back(' ');
                 raw.remove_prefix(close + 1);
                 if (!raw.empty() && raw[0] == ' ') raw.remove_prefix(1);
             }
         } else {
             // Fallback: append our own level token
-            out.append(gb2d::logging::level_to_label(ln.level));
-            out.push_back(' ');
+            dest.append(gb2d::logging::level_to_label(ln.level));
+            dest.push_back(' ');
         }
-        out.append(raw);
-        if (!out.empty() && out.back() != '\n') out.push_back('\n');
+        dest.append(raw);
+        if (!dest.empty() && dest.back() != '\n') dest.push_back('\n');
+        return true;
+    };
+
+    size_t emitted_count = 0;
+    if (can_incremental && start_index < snapshotSize) {
+        // Just process new lines
+        for (size_t i = start_index; i < snapshotSize; ++i) {
+            if (processLine(lines[i], appendBuf)) {
+                ++emitted_count;
+            }
+        }
+        if (!appendBuf.empty()) {
+            // Append directly to cached buffer to avoid copying existing editor contents every time.
+            log_editor_text_cache_.append(appendBuf);
+            log_editor_.SetText(log_editor_text_cache_);
+            did_incremental = true;
+            text_changed = true;
+        } else {
+            // Snapshot grew but no new visible lines (all filtered out). Treat as handled: update raw snapshot & hashes later, skip SetText.
+            did_incremental = true; // indicates we shouldn't do a full rebuild
+        }
     }
-    log_editor_.SetText(out);
-    if (should_autoscroll) {
+    if (!did_incremental) {
+        for (const auto& ln : lines) {
+            if (processLine(ln, out)) ++emitted_count;
+        }
+        // Only update editor if content actually changed in size or differs.
+        if (out.size() != log_prev_char_count_ || out != log_editor_text_cache_) {
+            log_editor_text_cache_.assign(out.begin(), out.end());
+            log_editor_.SetText(log_editor_text_cache_);
+            text_changed = true;
+        }
+    }
+    if (should_autoscroll && text_changed) {
         auto totalLines = log_editor_.GetTotalLines();
         if (totalLines > 0) {
             TextEditor::Coordinates c{ (int)totalLines - 1, 0 };
@@ -994,6 +1045,21 @@ void gb2d::WindowManager::rebuildLogEditorIfNeeded() {
     }
     log_last_snapshot_size_ = snapshotSize;
     log_last_hash_ = h;
+    if (!did_incremental) {
+        log_prev_raw_ = lines; // store full snapshot for future incremental
+    } else {
+        if (!appendBuf.empty()) {
+            // Only append raw lines if there were any visible or invisible new raw lines processed; we still need entire snapshot.
+            log_prev_raw_.insert(log_prev_raw_.end(), lines.begin() + (long long)start_index, lines.end());
+        } else {
+            // No visible additions; just replace raw snapshot with new one (so removed/rolled lines reflect correctly if ring advanced)
+            log_prev_raw_ = lines;
+        }
+    }
+    if (text_changed) {
+        log_prev_char_count_ = log_editor_text_cache_.size();
+    }
+    log_prev_emitted_count_ += emitted_count; // simple running count (not currently used beyond debug potential)
 }
 
 bool gb2d::WindowManager::isTextLikeExtension(const std::string& ext) {
