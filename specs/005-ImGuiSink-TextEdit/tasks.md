@@ -61,9 +61,17 @@ Hard replacement of the legacy per-line ImGui log console with a read-only `ImGu
 | T2.2 | Max displayed lines cap | Allow optional cap (e.g., 2,000) if performance dips. | Define / setting reduces rebuild time with very large buffers. |
 | T2.3 | Palette configuration hook | Add settings entry to switch dark/light palette for log console independently. | UI toggle persists (if settings infra present). |
 | T2.4 | [x] Incremental append prototype | Append only new lines if no filter & full level mask; fallback otherwise. | Works; no duplicate lines; SetText skipped when no visible delta. |
-| T2.5 | Basic in-console search | Simple inline search input highlighting (non-filtering). | Matching substrings emphasized. |
+| T2.5 | [x] Basic in-console search | Simple inline search input + active match selection (non-filtering). | Active match selectable; navigation arrows cycle matches. |
 | T2.6 | [x] Ring truncation detection | Detect when ring buffer evicts front so incremental path re-synchronizes (prefix comparison + metric). | Falls back to full rebuild on mismatch; metric increments; no line loss. |
 | T2.7 | Filter-aware incremental append | Maintain filtered state or heuristic to allow incremental append with active filter / partial level mask. | Incremental still correct under filter changes; correctness tests pass. |
+
+### Proposed Search Enhancement Follow-Ups (Not Yet Implemented)
+| ID | Task | Details | Acceptance Criteria |
+|----|------|---------|---------------------|
+| T2.8 | Multi-match highlight | Visually highlight all matches (not just the active selection) via extended TextEditor color regions or overlay drawing. | All occurrences tinted (distinct from selection); performance remains acceptable (<1ms addl per 5k lines). |
+| T2.9 | Regex & whole-word options | Add toggle(s) for regex mode and whole-word search; fallback gracefully if regex invalid. | Valid regex finds correct matches; invalid pattern shows non-intrusive warning; whole-word mode respects word boundaries. |
+| T2.10 | Keyboard shortcuts (F3/Shift+F3) | Global shortcuts cycle next/previous match even when search box not focused; Ctrl+F focuses search input. | F3 / Shift+F3 navigate matches consistently; no conflict with existing bindings. |
+| T2.11 | Persist last search query | Store last search query + case / mode toggles in layout/settings so they survive restart. | After restart, console search box pre-populated with prior query and settings; opt-out on Clear Search. |
 
 NOTE: T2.4 delivered early and is live. Focus now shifts to instrumentation (T2.1) then correctness broadening (T2.6, T2.7) before optional UX features.
 
