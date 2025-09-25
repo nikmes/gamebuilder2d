@@ -1,7 +1,25 @@
 # Tasks - 005 ImGui Log Sink TextEdit Replacement
 
+## Current Progress Snapshot (Phase 1 Complete → Entering Phase 2)
+Phase 0 and Phase 1 have been fully implemented. The log console now uses a read-only TextEditor with level + timestamp highlighting, filtering, copy, clear, and autoscroll parity. Incremental append optimization (baseline: no filter + full level mask) is implemented and live. We are transitioning to Phase 2 hardening & performance instrumentation.
+
+Key implemented optimizations beyond original Phase 1 scope:
+- Incremental append path with cached previous raw lines & emitted count.
+- Cached editor text buffer to avoid pulling text on every frame.
+- Skip `SetText` when no visible changes (empty append or unchanged rebuilt buffer via size/content checks & char count heuristic).
+- Conditional autoscroll only when text actually changed.
+- Timestamp styling via synthetic token (no regex cost each frame).
+
+Next immediate Phase 2 priorities (proposed):
+1. T2.1 Instrument rebuild/append timings (debug-only stats) + counters for skipped vs executed `SetText`.
+2. New Task T2.6 Ring buffer truncation (front-eviction) detection to safely broaden incremental applicability.
+3. New Task T2.7 Filter-aware incremental append (maintain filtered index mapping or fallback heuristics).
+4. (Optional later) Search highlighting (T2.5) & palette configurability (T2.3) if still desired.
+
+---
+
 ## Overview
-Hard replacement of the legacy per-line ImGui log console with a read-only `ImGuiColorTextEdit` (`TextEditor`) driven view, providing level color highlighting, filtering, copy, clear, and autoscroll parity. Incremental append & search are deferred.
+Hard replacement of the legacy per-line ImGui log console with a read-only `ImGuiColorTextEdit` (`TextEditor`) driven view, providing level color highlighting, filtering, copy, clear, and autoscroll parity. Incremental append & search were initially deferred; incremental append (baseline) is now delivered early.
 
 ## Conventions
 - Source integration lives in existing window/console management code (likely `WindowManager.cpp` / related state headers).
@@ -16,40 +34,45 @@ Hard replacement of the legacy per-line ImGui log console with a read-only `ImGu
 ## Phase 0 – Preparation
 | ID | Task | Details | Acceptance Criteria |
 |----|------|---------|---------------------|
-| T0.1 | Locate legacy render block | Identify the precise function/section rendering the log console lines. | Section located & commented with `// LEGACY_LOG_RENDER_START/END (to be removed)` before removal. |
-| T0.2 | Add console state fields | Extend console/window state: `TextEditor logEditor; bool logEditorInitialized=false; size_t logLastSnapshotCount=0; uint64_t logLastFilterHash=0;` | Code compiles; state accessible in render path. |
-| T0.3 | Decide timestamp source | Confirm whether timestamp is part of stored line string or needs formatting. | Document decision inline in code comment. |
+| T0.1 | [x] Locate legacy render block | Identify the precise function/section rendering the log console lines. | Section located & commented with `// LEGACY_LOG_RENDER_START/END (to be removed)` before removal. |
+| T0.2 | [x] Add console state fields | Extend console/window state: `TextEditor logEditor; bool logEditorInitialized=false; size_t logLastSnapshotCount=0; uint64_t logLastFilterHash=0;` | Code compiles; state accessible in render path. |
+| T0.3 | [x] Decide timestamp source | Confirm whether timestamp is part of stored line string or needs formatting. | Decision: use sink-provided timestamp, injected as synthetic token for styling. |
 
-## Phase 1 – Core Replacement
+## Phase 1 – Core Replacement (All Completed)
 | ID | Task | Details | Acceptance Criteria |
 |----|------|---------|---------------------|
-| T1.1 | Implement language definition | Function `CreateLogLanguageDefinition()` returning customized `TextEditor::LanguageDefinition` with identifier color overrides for levels. | Function returns stable object; unit/local test prints palette mapping (optional). |
-| T1.2 | Initialize editor | On first console render: set language, disable line numbers (`SetShowWhitespaces(false)`, `SetShowLineNumbers(false)`), set read-only, choose palette (Dark + tweaks). | First open of console shows empty read-only editor; no crash. |
-| T1.3 | Hash utility | Implement lightweight hash (e.g., FNV-1a) over: snapshot size, active level mask bits, filter text. | Changing any input causes different hash (verified via debug log). |
-| T1.4 | Rebuild helper | `RebuildLogEditorIfNeeded(snapshot, levelMask, filterText)` builds concatenated filtered lines with '\n'. | Editor updates only when any input changes; manual log spam shows responsive updates. |
-| T1.5 | Level highlighting tokens | Ensure first token (e.g., `INFO`, `ERROR`) is picked up by language definition (identifiers map). | Visual color difference per level confirmed. |
-| T1.6 | Timestamp coloring (basic) | Apply dim gray: either regex if available, or simple prefix parse `[HH:MM:SS]`. Option: preprocess line to wrap timestamp with sentinel token (e.g., `TS_`). | Timestamps rendered dim; malformed lines remain unaffected. |
-| T1.7 | Autoscroll parity | Detect if user at bottom before rebuild (compare editor total lines vs current scroll/ cursor). After rebuild & if autoscroll enabled, move cursor to end (`SetCursorPosition`). | When autoscroll on, new logs keep view pinned; when scrolled up, no jump. |
-| T1.8 | Clear integration | Clear button: clears sink buffer (existing) then explicitly sets editor text to empty, reset counters. | After Clear, editor blank; new logs append from scratch. |
-| T1.9 | Copy integration | Copy button copies current editor full text (filtered view). | Clipboard contains same text as editor (spot-check). |
-| T1.10 | Remove legacy code | Delete old immediate-mode loop. Remove any dead variables. | No references to legacy rendering remain; build passes. |
-| T1.11 | Logging for debug | (Optional) Add `SPDLOG_DEBUG` statements guarded by `#ifdef` for rebuild events. | Can be toggled via define; no noise in release. |
-| T1.12 | Acceptance pass | Manual verification of FR1–FR9 from spec. | Checklist completed & noted in spec PR. |
+| T1.1 | [x] Implement language definition | Function `CreateLogLanguageDefinition()` returning customized `TextEditor::LanguageDefinition` with identifier color overrides for levels. | Function returns stable object; palette stable. |
+| T1.2 | [x] Initialize editor | On first console render: set language, disable line numbers (`SetShowWhitespaces(false)`, `SetShowLineNumbers(false)`), set read-only, palette applied. | Empty read-only editor appears; no crash. |
+| T1.3 | [x] Hash utility | Lightweight FNV-1a over snapshot size, level mask bits, filter text. | Hash changes when any input changes. |
+| T1.4 | [x] Rebuild helper | `RebuildLogEditorIfNeeded(...)` full rebuild path implemented. | Updates only when needed (hash delta). |
+| T1.5 | [x] Level highlighting tokens | First token mapped to level color. | Distinct colors per level. |
+| T1.6 | [x] Timestamp coloring (basic) | Synthetic timestamp token inserted and colored dim. | Timestamps uniformly dim; malformed untouched. |
+| T1.7 | [x] Autoscroll parity | Detect bottom; autoscroll only when user was at bottom and content changed. | Behavior matches legacy console. |
+| T1.8 | [x] Clear integration | Clear resets sink + editor + counters. | Editor blank post-clear; new lines show. |
+| T1.9 | [x] Copy integration | Copy button copies filtered text. | Clipboard matches editor (spot-check). |
+| T1.10 | [x] Remove legacy code | Old immediate-mode loop removed. | No legacy references remain. |
+| T1.11 | [x] Logging for debug | Optional debug logs guarded (where enabled). | No release noise. |
+| T1.12 | [x] Acceptance pass | Manual FR1–FR9 verified. | Phase 1 sign-off recorded. |
 
-## Phase 2 – Quality & Hardening (Optional / Stretch)
+## Phase 2 – Quality & Hardening (In Progress)
 | ID | Task | Details | Acceptance Criteria |
 |----|------|---------|---------------------|
-| T2.1 | Performance measurement | Instrument rebuild duration with scope timer (debug only). | Log line printed with ms on rebuild (debug builds). |
-| T2.2 | Max displayed lines cap | Allow optional cap (e.g., 2,000) if performance dips. | Config define reduces rebuild time if large buffers tested. |
+| T2.1 | Performance measurement | Instrument rebuild & append duration + counters for full rebuilds, incremental appends, skipped `SetText`. | Debug metrics visible; negligible overhead when disabled. |
+| T2.2 | Max displayed lines cap | Allow optional cap (e.g., 2,000) if performance dips. | Define / setting reduces rebuild time with very large buffers. |
 | T2.3 | Palette configuration hook | Add settings entry to switch dark/light palette for log console independently. | UI toggle persists (if settings infra present). |
-| T2.4 | Incremental append prototype | Append only new lines if no filter & same level mask; fallback to full rebuild otherwise. | Append path validated (line count grows, no duplicate full text). |
-| T2.5 | Basic in-console search | Simple inline search input filtering highlight (without narrowing lines). | Matching substrings visually emphasized. |
+| T2.4 | [x] Incremental append prototype | Append only new lines if no filter & full level mask; fallback otherwise. | Works; no duplicate lines; SetText skipped when no visible delta. |
+| T2.5 | Basic in-console search | Simple inline search input highlighting (non-filtering). | Matching substrings emphasized. |
+| T2.6 | [x] Ring truncation detection | Detect when ring buffer evicts front so incremental path re-synchronizes (prefix comparison + metric). | Falls back to full rebuild on mismatch; metric increments; no line loss. |
+| T2.7 | Filter-aware incremental append | Maintain filtered state or heuristic to allow incremental append with active filter / partial level mask. | Incremental still correct under filter changes; correctness tests pass. |
+
+NOTE: T2.4 delivered early and is live. Focus now shifts to instrumentation (T2.1) then correctness broadening (T2.6, T2.7) before optional UX features.
 
 ## Implementation Notes
 - Rebuild strategy initial: full text replacement using `SetText()`. (TextEditor handles tokenization on assignment.)
+- Current: Hybrid with incremental append path (no filter + full mask, no front truncation) plus multiple no-op avoidance checks.
 - FNV-1a 64-bit hash: simple, fast—combine snapshot size, mask, and filter text bytes.
 - At-bottom detection: track last visible line index (totalLines - 1) and current cursor or compute from scroll ratio; if editor API lacks scroll accessor, approximate by remembering we last autoscrolled and user did not move cursor.
-- If timestamp regex is complex, fallback approach: before concatenation, detect `line.size() >= 10 && line[0]=='[' && line[9]==']'` then optionally prefix token like `TS_` and map `TS_` to gray; or rely on manual segment coloring in future enhancement.
+- If timestamp regex is complex, fallback approach: before concatenation, detect `line.size() >= 10 && line[0]=='[' && line[9]==']'` then optionally prefix token like `TS_` and map `TS_` to gray; or rely on manual segment coloring in future enhancement. Implemented synthetic token approach.
 
 ## Deliverables
 - Code changes in console render path & new helpers.

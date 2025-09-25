@@ -636,6 +636,19 @@ void WindowManager::renderUI() {
 
                 // Render read-only log editor
                 log_editor_.Render("##log_editor");
+#ifdef GB2D_LOG_CONSOLE_INSTRUMENT
+                if (ImGui::CollapsingHeader("Log Metrics", ImGuiTreeNodeFlags_DefaultOpen)) {
+                    ImGui::Text("Frames Checked: %llu", (unsigned long long)log_metrics_.total_frames);
+                    ImGui::Text("Full Rebuilds: %llu (%.2f ms avg)", (unsigned long long)log_metrics_.total_full_rebuilds,
+                        log_metrics_.total_full_rebuilds ? log_metrics_.accum_full_rebuild_ms / (double)log_metrics_.total_full_rebuilds : 0.0);
+                    ImGui::Text("Incremental Appends: %llu (%.2f ms avg)", (unsigned long long)log_metrics_.total_incremental_appends,
+                        log_metrics_.total_incremental_appends ? log_metrics_.accum_incremental_ms / (double)log_metrics_.total_incremental_appends : 0.0);
+                    ImGui::Text("No-op Hash Skips: %llu", (unsigned long long)log_metrics_.total_noop_skips);
+                    ImGui::Text("Truncation Fallbacks: %llu", (unsigned long long)log_metrics_.total_truncation_fallbacks);
+                    ImGui::Text("SetText Calls: %llu", (unsigned long long)log_metrics_.total_settext_calls);
+                    ImGui::Text("Last Op: %.4f ms (%s)", log_metrics_.last_op_ms, log_metrics_.last_was_incremental ? "incremental" : "full");
+                }
+#endif
             } else if (w.title.rfind("Preview:", 0) == 0) {
                 auto itp = previews_.find(w.id);
                 if (itp != previews_.end()) {
@@ -900,6 +913,11 @@ void gb2d::WindowManager::initLogEditorIfNeeded() {
 }
 
 void gb2d::WindowManager::rebuildLogEditorIfNeeded() {
+#ifdef GB2D_LOG_CONSOLE_INSTRUMENT
+    using namespace std::chrono;
+    auto frame_start = high_resolution_clock::now();
+    if constexpr (true) { log_metrics_.total_frames++; }
+#endif
     // Snapshot current log lines (bounded by console_max_lines_)
     auto lines = gb2d::logging::read_log_lines_snapshot((size_t)console_max_lines_);
     size_t snapshotSize = lines.size();
@@ -911,6 +929,11 @@ void gb2d::WindowManager::rebuildLogEditorIfNeeded() {
     h = fnv1a64(console_text_filter_.data(), console_text_filter_.size(), h);
 
     if (snapshotSize == log_last_snapshot_size_ && h == log_last_hash_) {
+#ifdef GB2D_LOG_CONSOLE_INSTRUMENT
+        log_metrics_.total_noop_skips++;
+        log_metrics_.last_op_ms = 0.0;
+        log_metrics_.last_was_incremental = false;
+#endif
         return; // nothing changed that affects filtered view
     }
     // Determine if user is at (or near) bottom before rebuild for refined autoscroll logic.
@@ -928,7 +951,32 @@ void gb2d::WindowManager::rebuildLogEditorIfNeeded() {
     }
 
     bool filters_simple = console_text_filter_.empty();
-    bool can_incremental = (snapshotSize >= log_prev_raw_.size()) && filters_simple && (console_level_mask_ == 0x3F);
+    bool size_non_decreasing = snapshotSize >= log_prev_raw_.size();
+    bool can_incremental = size_non_decreasing && filters_simple && (console_level_mask_ == 0x3F);
+
+    // T2.6: Detect ring truncation / front eviction. We only proceed incremental if previous raw snapshot is a prefix of new snapshot.
+    if (can_incremental && !log_prev_raw_.empty()) {
+        size_t prevCount = log_prev_raw_.size();
+        if (prevCount > 0) {
+            bool prefix_ok = true;
+            if (prevCount <= lines.size()) {
+                // Compare objects (pointer + level + text). Comparing text only suffices.
+                for (size_t i = 0; i < prevCount; ++i) {
+                    const auto& a = log_prev_raw_[i];
+                    const auto& b = lines[i];
+                    if (a.level != b.level || a.text != b.text) { prefix_ok = false; break; }
+                }
+            } else {
+                prefix_ok = false;
+            }
+            if (!prefix_ok) {
+                can_incremental = false; // fallback to full rebuild
+#ifdef GB2D_LOG_CONSOLE_INSTRUMENT
+                log_metrics_.total_truncation_fallbacks++;
+#endif
+            }
+        }
+    }
     bool did_incremental = false;
     bool text_changed = false; // track whether editor text was modified this cycle
 
@@ -1034,6 +1082,9 @@ void gb2d::WindowManager::rebuildLogEditorIfNeeded() {
             log_editor_text_cache_.assign(out.begin(), out.end());
             log_editor_.SetText(log_editor_text_cache_);
             text_changed = true;
+            #ifdef GB2D_LOG_CONSOLE_INSTRUMENT
+            log_metrics_.total_settext_calls++;
+            #endif
         }
     }
     if (should_autoscroll && text_changed) {
@@ -1060,6 +1111,21 @@ void gb2d::WindowManager::rebuildLogEditorIfNeeded() {
         log_prev_char_count_ = log_editor_text_cache_.size();
     }
     log_prev_emitted_count_ += emitted_count; // simple running count (not currently used beyond debug potential)
+
+#ifdef GB2D_LOG_CONSOLE_INSTRUMENT
+    auto frame_end = std::chrono::high_resolution_clock::now();
+    double ms = std::chrono::duration<double, std::milli>(frame_end - frame_start).count();
+    log_metrics_.last_op_ms = ms;
+    if (did_incremental) {
+        log_metrics_.total_incremental_appends++;
+        log_metrics_.accum_incremental_ms += ms;
+        log_metrics_.last_was_incremental = true;
+    } else {
+        log_metrics_.total_full_rebuilds++;
+        log_metrics_.accum_full_rebuild_ms += ms;
+        log_metrics_.last_was_incremental = false;
+    }
+#endif
 }
 
 bool gb2d::WindowManager::isTextLikeExtension(const std::string& ext) {

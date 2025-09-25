@@ -21,6 +21,8 @@ target_compile_options(gb2d_window PRIVATE
   $<$<CXX_COMPILER_ID:MSVC>:/FI"${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/ImGuiColorTextEdit/imgui_compat_shim.h">
   $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-include ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/ImGuiColorTextEdit/imgui_compat_shim.h>
 )
+ # Enable log console instrumentation (Phase 2 T2.1)
+ target_compile_definitions(gb2d_window PRIVATE GB2D_LOG_CONSOLE_INSTRUMENT)
 
 # Add source to this project's executable (app entry only)
 add_executable (GameBuilder2d

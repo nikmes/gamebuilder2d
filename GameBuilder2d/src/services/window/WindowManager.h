@@ -112,6 +112,22 @@ private:
     size_t log_prev_emitted_count_{0};      // How many raw lines contributed to current editor text (post-filter)
     size_t log_prev_char_count_{0};          // Cached character count of editor text to detect no-op rebuilds
 
+    // Phase 2 instrumentation (T2.1): performance & behavior counters (debug builds only)
+#ifdef GB2D_LOG_CONSOLE_INSTRUMENT
+    struct LogConsoleMetrics {
+        uint64_t total_full_rebuilds{0};
+        uint64_t total_incremental_appends{0};
+        uint64_t total_noop_skips{0};          // hash stable early-return
+        uint64_t total_settext_calls{0};       // actual SetText invocations
+        uint64_t total_frames{0};              // frames rebuild evaluated
+        uint64_t total_truncation_fallbacks{0}; // times incremental disabled due to prefix mismatch (ring eviction or history change)
+        double   accum_full_rebuild_ms{0.0};
+        double   accum_incremental_ms{0.0};
+        double   last_op_ms{0.0};
+        bool     last_was_incremental{false};
+    } log_metrics_{};
+#endif
+
     // Text Editor state (multi-tab)
     struct EditorTab {
         std::string path;      // absolute or relative on open
