@@ -631,6 +631,84 @@ void WindowManager::renderUI() {
                     console_text_filter_ = filterBuf2;
                 }
 
+                // Search (T2.5): independent of filtering
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(200);
+                char searchBuf[256];
+                std::strncpy(searchBuf, console_search_query_.c_str(), sizeof(searchBuf));
+                searchBuf[sizeof(searchBuf)-1] = '\0';
+                bool searchEdited = false;
+                if (ImGui::InputTextWithHint("##console_search", "Search", searchBuf, IM_ARRAYSIZE(searchBuf))) {
+                    console_search_query_ = searchBuf;
+                    searchEdited = true;
+                }
+                ImGui::SameLine();
+                ImGui::Checkbox("Aa", &console_search_case_sensitive_); ImGui::SameLine();
+                bool goPrev = ImGui::ArrowButton("##search_prev", ImGuiDir_Left); ImGui::SameLine();
+                bool goNext = ImGui::ArrowButton("##search_next", ImGuiDir_Right); ImGui::SameLine();
+                if (ImGui::Button("Clear Search")) {
+                    console_search_query_.clear();
+                    console_search_matches_.clear();
+                    console_search_current_index_ = 0;
+                }
+
+                // Shortcut: Enter cycles next when search has focus
+                if (ImGui::IsItemFocused() && ImGui::IsKeyPressed(ImGuiKey_Enter)) {
+                    goNext = true;
+                }
+
+                // Recompute matches when query changed, text changed, or case sensitivity toggled
+                if (searchEdited || console_search_last_query_ != console_search_query_ || console_search_last_version_ != log_text_version_ || console_search_last_case_sensitive_ != console_search_case_sensitive_) {
+                    if (searchEdited || console_search_last_query_ != console_search_query_ || console_search_last_version_ != log_text_version_ || console_search_last_case_sensitive_ != console_search_case_sensitive_) {
+                        console_search_matches_.clear();
+                        console_search_current_index_ = 0;
+                        console_search_last_query_ = console_search_query_;
+                        console_search_last_version_ = log_text_version_;
+                        console_search_last_case_sensitive_ = console_search_case_sensitive_;
+                        if (!console_search_query_.empty()) {
+                            auto lines = log_editor_.GetTextLines();
+                            std::string needle = console_search_query_;
+                            if (!console_search_case_sensitive_) {
+                                std::transform(needle.begin(), needle.end(), needle.begin(), [](unsigned char c){ return (char)tolower(c); });
+                            }
+                            for (int li = 0; li < (int)lines.size(); ++li) {
+                                const std::string& L = lines[li];
+                                std::string hay = L;
+                                if (!console_search_case_sensitive_) {
+                                    std::transform(hay.begin(), hay.end(), hay.begin(), [](unsigned char c){ return (char)tolower(c); });
+                                }
+                                size_t pos = hay.find(needle);
+                                while (!needle.empty() && pos != std::string::npos) {
+                                    console_search_matches_.push_back({ li, (int)pos, (int)(pos + needle.size()) });
+                                    pos = hay.find(needle, pos + (needle.size() ? needle.size() : 1));
+                                }
+                            }
+                        }
+                        console_search_selection_dirty_ = true;
+                    }
+                }
+
+                // Navigation
+                if (!console_search_matches_.empty()) {
+                    if (goNext) { console_search_current_index_ = (console_search_current_index_ + 1) % (int)console_search_matches_.size(); console_search_selection_dirty_ = true; }
+                    if (goPrev) { console_search_current_index_ = (console_search_current_index_ - 1 + (int)console_search_matches_.size()) % (int)console_search_matches_.size(); console_search_selection_dirty_ = true; }
+                    ImGui::SameLine();
+                    ImGui::TextDisabled("%d/%d", console_search_current_index_ + 1, (int)console_search_matches_.size());
+                } else if (!console_search_query_.empty()) {
+                    ImGui::SameLine();
+                    ImGui::TextDisabled("0/0");
+                }
+
+                // Apply selection of current match
+                if (console_search_selection_dirty_ && !console_search_matches_.empty()) {
+                    console_search_selection_dirty_ = false;
+                    const auto& m = console_search_matches_[console_search_current_index_];
+                    TextEditor::Coordinates start{ m.line, m.start_col };
+                    TextEditor::Coordinates end{ m.line, m.end_col };
+                    log_editor_.SetSelection(start, end, TextEditor::SelectionMode::Normal);
+                    log_editor_.SetCursorPosition(end);
+                }
+
                 // Rebuild editor contents if needed (lines snapshot + filters changed)
                 rebuildLogEditorIfNeeded();
 
@@ -1086,6 +1164,9 @@ void gb2d::WindowManager::rebuildLogEditorIfNeeded() {
             log_metrics_.total_settext_calls++;
             #endif
         }
+    }
+    if (text_changed) {
+        ++log_text_version_; // mark content mutation for search system
     }
     if (should_autoscroll && text_changed) {
         auto totalLines = log_editor_.GetTotalLines();

@@ -111,6 +111,18 @@ private:
     std::string log_editor_text_cache_;    // Cached full text currently loaded in log_editor_
     size_t log_prev_emitted_count_{0};      // How many raw lines contributed to current editor text (post-filter)
     size_t log_prev_char_count_{0};          // Cached character count of editor text to detect no-op rebuilds
+    size_t log_text_version_{0};             // Monotonic version incremented whenever log_editor_text_cache_ mutates
+
+    // Console search (T2.5) state
+    std::string console_search_query_{};              // current search query (independent of filter)
+    std::string console_search_last_query_{};         // last query we processed
+    size_t console_search_last_version_{(size_t)-1};  // last log_text_version_ we processed
+    struct ConsoleSearchMatch { int line; int start_col; int end_col; }; // [start_col,end_col)
+    std::vector<ConsoleSearchMatch> console_search_matches_{};
+    int console_search_current_index_{0};
+    bool console_search_case_sensitive_{false};
+    bool console_search_selection_dirty_{false};       // trigger selection update in editor
+    bool console_search_last_case_sensitive_{false};    // detect toggles
 
     // Phase 2 instrumentation (T2.1): performance & behavior counters (debug builds only)
 #ifdef GB2D_LOG_CONSOLE_INSTRUMENT
