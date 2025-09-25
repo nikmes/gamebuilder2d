@@ -230,6 +230,13 @@ void ConfigurationManager::loadOrDefault() {
 	ensure_path(c, "window.width") = 1280;
 	ensure_path(c, "window.height") = 720;
 	ensure_path(c, "ui.theme") = "dark";
+	// Scripting subsystem defaults (T004/T027):
+	// runtimeSearchPaths: list of relative directories to probe for runtime assets / assemblies.
+	// maxContexts: upper bound on simultaneously loaded script contexts.
+	// reload.debounceMs: debounce window for coalescing rapid reload requests.
+	ensure_path(c, "scripting.runtimeSearchPaths") = json::array({ "./runtimes", "./scripts" });
+	ensure_path(c, "scripting.maxContexts") = 64; // matches prior hard-coded kMaxScripts
+	ensure_path(c, "scripting.reload.debounceMs") = 500; // ms, aligns with spec FR- debounce requirement
 	size_t overrides = apply_env_overrides(c);
 	(void)overrides; // no logging
 }

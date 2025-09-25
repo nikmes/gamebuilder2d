@@ -65,6 +65,15 @@ std::string WindowManager::createWindow(const std::string& title, std::optional<
     return w.id;
 }
 
+bool WindowManager::setWindowTitle(const std::string& windowId, const std::string& newTitle) {
+    auto it = std::find_if(windows_.begin(), windows_.end(), [&](const ManagedWindow& w){ return w.id == windowId; });
+    if (it == windows_.end()) return false;
+    if (newTitle.empty() || newTitle == it->title) return true; // treat empty as no-op (validation handled by caller)
+    gb2d::logging::LogManager::debug("Renaming window {}: '{}' -> '{}'", windowId, it->title, newTitle);
+    it->title = newTitle;
+    return true;
+}
+
 bool WindowManager::dockWindow(const std::string& windowId, const std::string& targetRegionId, DockPosition position) {
     // Find window to dock
     auto it = std::find_if(windows_.begin(), windows_.end(), [&](const ManagedWindow& w){ return w.id == windowId; });

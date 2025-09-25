@@ -24,3 +24,5 @@ include(CTest)
 if (BUILD_TESTING)
   add_subdirectory(tests)
 endif()
+
+# (T025) touch: ensure reconfigure to pick up newly added integration/test_window_multi_close.cpp

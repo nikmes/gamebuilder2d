@@ -194,3 +194,25 @@ if (WIN32)
 endif()
 
 # TODO: Add tests and install targets if needed.
+
+# -----------------------------------------------------------------------------
+# Interop (Embedded .NET) – foundational library (status codes, bootstrap stubs)
+# -----------------------------------------------------------------------------
+add_library(gb2d_interop STATIC
+  "src/bridge/gb2d_status_codes.cpp"
+  "src/bridge/gb2d_interop.cpp"
+  "src/bridge/gb2d_window_api.cpp"
+  "src/bridge/gb2d_logging_api.cpp"
+  "src/bridge/gb2d_script_manager.cpp"
+  "src/bridge/utf8_validation.cpp"
+)
+target_include_directories(gb2d_interop
+  PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
+  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+set_property(TARGET gb2d_interop PROPERTY CXX_STANDARD 20)
+target_link_libraries(gb2d_interop PUBLIC gb2d_logging gb2d_window gb2d_configuration)
+if (BUILD_TESTING)
+  target_compile_definitions(gb2d_interop PUBLIC GB2D_INTERNAL_TESTING=1)
+endif()
+

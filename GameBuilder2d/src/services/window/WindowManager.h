@@ -36,6 +36,8 @@ public:
     bool dockWindow(const std::string& windowId, const std::string& targetRegionId, DockPosition position);
     bool undockWindow(const std::string& windowId);
     bool closeWindow(const std::string& windowId);
+    // Basic lifecycle: update a window's title (no uniqueness guarantee). Returns false if id not found.
+    bool setWindowTitle(const std::string& windowId, const std::string& newTitle);
 
     bool reorderTabs(const std::string& regionId, const std::vector<std::string>& newOrder);
     bool resizeRegion(const std::string& regionId, int deltaWidth, int deltaHeight);
