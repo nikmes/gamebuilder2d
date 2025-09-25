@@ -63,6 +63,25 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
+# spdlog (logging backend)
+FetchContent_Declare(
+  spdlog
+  GIT_REPOSITORY https://github.com/gabime/spdlog.git
+  GIT_TAG v1.12.0
+)
+FetchContent_MakeAvailable(spdlog)
+
+# Logging service library
+add_library(gb2d_logging
+  "src/services/logger/LogManager.h"
+  "src/services/logger/LogManager.cpp"
+  "src/services/logger/ImGuiLogSink.h"
+  "src/services/logger/ImGuiLogSink.cpp"
+)
+target_include_directories(gb2d_logging PUBLIC "src")
+set_property(TARGET gb2d_logging PROPERTY CXX_STANDARD 20)
+target_link_libraries(gb2d_logging PUBLIC spdlog::spdlog)
+
 # Configuration service library
 add_library(gb2d_configuration
   "src/services/configuration/ConfigurationManager.h"
@@ -100,6 +119,33 @@ add_library(imguifiledialog STATIC
 target_include_directories(imguifiledialog PUBLIC ${imguifiledialog_SOURCE_DIR})
 target_link_libraries(imguifiledialog PUBLIC imgui)
 
+# ImGuiColorTextEdit (syntax highlighting editor)
+FetchContent_Declare(
+  imguicolortextedit
+  GIT_REPOSITORY https://github.com/BalazsJako/ImGuiColorTextEdit.git
+  GIT_TAG master
+)
+if (POLICY CMP0169)
+  cmake_policy(PUSH)
+  cmake_policy(SET CMP0169 OLD)
+endif()
+FetchContent_Populate(imguicolortextedit)
+if (POLICY CMP0169)
+  cmake_policy(POP)
+endif()
+add_library(imguicolortextedit STATIC
+  ${imguicolortextedit_SOURCE_DIR}/TextEditor.cpp
+)
+target_include_directories(imguicolortextedit PUBLIC ${imguicolortextedit_SOURCE_DIR})
+# no special defines needed; the shim includes upstream by name
+target_link_libraries(imguicolortextedit PUBLIC imgui)
+
+# Force-include a tiny compatibility shim to provide removed ImGui APIs
+target_compile_options(imguicolortextedit PRIVATE
+  $<$<CXX_COMPILER_ID:MSVC>:/FI"${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/ImGuiColorTextEdit/imgui_compat_shim.h">
+  $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-include ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/ImGuiColorTextEdit/imgui_compat_shim.h>
+)
+
 # rlImGui via FetchContent_MakeAvailable (upstream provides CMake)
 FetchContent_Declare(
   rlimgui
@@ -129,9 +175,9 @@ if (NOT TARGET rlimgui AND NOT TARGET rlImGui)
 endif()
 
 # Window library depends on ImGui, file dialog, and raylib
-target_link_libraries(gb2d_window PUBLIC imgui imguifiledialog raylib)
+target_link_libraries(gb2d_window PUBLIC imgui imguifiledialog raylib gb2d_logging imguicolortextedit)
 
-target_link_libraries(GameBuilder2d PRIVATE raylib rlImGui imgui imguifiledialog gb2d_configuration gb2d_window)
+target_link_libraries(GameBuilder2d PRIVATE raylib rlImGui imgui imguifiledialog gb2d_configuration gb2d_window gb2d_logging)
 
 if (WIN32)
   target_link_libraries(GameBuilder2d PRIVATE winmm)

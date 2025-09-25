@@ -8,6 +8,8 @@
 #include "Window.h"
 #include "DockRegion.h"
 #include "Layout.h"
+// ImGuiColorTextEdit editor
+#include <TextEditor.h>
 
 namespace gb2d {
 
@@ -83,8 +85,41 @@ private:
 
     // DnD docking overlay + constraints
     std::optional<std::string> dragging_window_id_{}; // set while user drags our handle
+    std::optional<std::string> focus_request_window_id_{}; // focus a window after render
     int min_dock_width_{200};
     int min_dock_height_{120};
+
+    // Console settings (persisted with layout)
+    bool console_autoscroll_{true};
+    int console_max_lines_{1000};
+    size_t console_buffer_cap_{5000};
+    uint32_t console_level_mask_{0x3F}; // bits: 0=trace,1=debug,2=info,3=warn,4=err,5=critical
+    std::string console_text_filter_{};
+
+    // Text Editor state (multi-tab)
+    struct EditorTab {
+        std::string path;      // absolute or relative on open
+        std::string title;     // tab title (file name or "Untitled")
+        std::unique_ptr<TextEditor> editor;
+        bool dirty{false};
+        std::string langName;  // for display/debug
+    };
+    struct EditorState {
+        bool exists{false};
+        bool open{true};
+        std::string id;            // managed window id
+        int current{-1};
+        std::vector<EditorTab> tabs;
+    };
+    EditorState editor_{};
+
+    // Editor helpers
+    void ensureEditorWindow(bool focus = true);
+    void renderEditorWindow();
+    void openEditorFile(const std::string& path);
+    bool saveEditorTab(int index, bool saveAs = false);
+    static bool isTextLikeExtension(const std::string& ext);
+    static const TextEditor::LanguageDefinition& languageForExtension(const std::string& ext, std::string& outName);
 };
 
 } // namespace gb2d

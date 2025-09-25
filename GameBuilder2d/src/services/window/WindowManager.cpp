@@ -9,6 +9,11 @@
 #include <fstream>
 #include <sstream>
 #include <algorithm>
+#include <cstring>
+#include <memory>
+#include "services/logger/LogManager.h"
+// ImGuiColorTextEdit
+#include <TextEditor.h>
 
 namespace gb2d {
 
@@ -17,6 +22,8 @@ WindowManager::WindowManager() {
     if (ImGui::GetCurrentContext() != nullptr) {
         loadLayout("last");
     }
+    // Apply default console buffer capacity at startup
+    gb2d::logging::set_log_buffer_capacity(console_buffer_cap_);
 }
 WindowManager::~WindowManager() = default;
 
@@ -28,6 +35,7 @@ std::string WindowManager::createWindow(const std::string& title, std::optional<
     w.title = title.empty() ? w.id : title;
     if (initialSize.has_value()) w.minSize = initialSize;
     windows_.push_back(w);
+    gb2d::logging::LogManager::debug("Created window: {} (title: {})", w.id, w.title);
     return w.id;
 }
 
@@ -105,6 +113,7 @@ bool WindowManager::dockWindow(const std::string& windowId, const std::string& t
         }
         if (block) {
             addToast("Not enough space to split");
+            gb2d::logging::LogManager::warn("Dock split blocked: insufficient space for {}", label);
             return false;
         }
         ImGuiID out_node = ImGui::DockBuilderSplitNode(target_node, dir, ratio, nullptr, &target_node);
@@ -116,6 +125,7 @@ bool WindowManager::dockWindow(const std::string& windowId, const std::string& t
 
 bool WindowManager::undockWindow(const std::string& windowId) {
     undock_requests_.insert(windowId);
+    gb2d::logging::LogManager::debug("Undock requested for {}", windowId);
     return true;
 }
 
@@ -123,6 +133,7 @@ bool WindowManager::closeWindow(const std::string& windowId) {
     auto it = std::find_if(windows_.begin(), windows_.end(), [&](const ManagedWindow& w){ return w.id == windowId; });
     if (it == windows_.end()) return false;
     windows_.erase(it);
+    gb2d::logging::LogManager::debug("Closed window {}", windowId);
     return true;
 }
 
@@ -154,8 +165,14 @@ bool WindowManager::saveLayout(const std::optional<std::string>& name) {
 
         std::ofstream ofs(windowsPath, std::ios::trunc);
         if (!ofs) return false;
-    ofs << "next_id=" << next_id_ << "\n";
-    ofs << "last_folder=" << escape(last_folder_) << "\n";
+        ofs << "next_id=" << next_id_ << "\n";
+        ofs << "last_folder=" << escape(last_folder_) << "\n";
+        // Persist console settings
+        ofs << "console_autoscroll=" << (console_autoscroll_ ? 1 : 0) << "\n";
+        ofs << "console_max_lines=" << console_max_lines_ << "\n";
+        ofs << "console_buffer_cap=" << console_buffer_cap_ << "\n";
+        ofs << "console_level_mask=" << console_level_mask_ << "\n";
+        ofs << "console_text_filter=" << escape(console_text_filter_) << "\n";
         if (!recent_files_.empty()) {
             ofs << "recent=";
             for (size_t i = 0; i < recent_files_.size(); ++i) {
@@ -175,8 +192,10 @@ bool WindowManager::saveLayout(const std::optional<std::string>& name) {
         // Save ImGui dock/positions
         ImGui::SaveIniSettingsToDisk(imguiPath.string().c_str());
         addToast("Saved layout '" + layoutName + "'");
+        gb2d::logging::LogManager::info("Saved layout '{}'", layoutName);
         return true;
     } catch (...) {
+        gb2d::logging::LogManager::error("Failed saving layout '{}'", layoutName);
         return false;
     }
 }
@@ -217,6 +236,32 @@ bool WindowManager::loadLayout(const std::string& name) {
                     last_folder_ = unescape(line.substr(12));
                     continue;
                 }
+                if (line.rfind("console_autoscroll=", 0) == 0) {
+                    console_autoscroll_ = (std::stoi(line.substr(19)) != 0);
+                    continue;
+                }
+                if (line.rfind("console_max_lines=", 0) == 0) {
+                    console_max_lines_ = std::max(100, std::stoi(line.substr(18)));
+                    continue;
+                }
+                if (line.rfind("console_buffer_cap=", 0) == 0) {
+                    int v = std::stoi(line.substr(19));
+                    if (v < 1000) v = 1000;
+                    console_buffer_cap_ = (size_t)v;
+                    gb2d::logging::set_log_buffer_capacity(console_buffer_cap_);
+                    continue;
+                }
+                if (line.rfind("console_level_mask=", 0) == 0) {
+                    uint32_t v = 0;
+                    try { v = (uint32_t)std::stoul(line.substr(20)); } catch (...) { v = 0x3F; }
+                    if (v == 0) v = 0x3F;
+                    console_level_mask_ = v;
+                    continue;
+                }
+                if (line.rfind("console_text_filter=", 0) == 0) {
+                    console_text_filter_ = unescape(line.substr(20));
+                    continue;
+                }
                 if (line.rfind("recent=", 0) == 0) {
                     recent_files_.clear();
                     std::string rest = line.substr(7);
@@ -253,6 +298,7 @@ bool WindowManager::loadLayout(const std::string& name) {
         ImGui::LoadIniSettingsFromDisk(imguiPath.string().c_str());
         layout_built_ = true; // skip default builder when a layout was loaded
         addToast("Loaded layout '" + layoutName + "'");
+        gb2d::logging::LogManager::info("Loaded layout '{}'", layoutName);
         loadedAny = true;
     }
 
@@ -378,9 +424,27 @@ void WindowManager::renderUI() {
             }
             ImGui::EndMenu();
         }
+        if (ImGui::BeginMenu("GameBuilder")) {
+            if (ImGui::MenuItem("Text Editor")) {
+                ensureEditorWindow(true);
+            }
+            ImGui::EndMenu();
+        }
         if (ImGui::BeginMenu("Windows")) {
             if (ImGui::MenuItem("New Window")) {
                 createWindow("Window " + std::to_string(next_id_));
+            }
+            if (ImGui::MenuItem("Console")) {
+                // Ensure a Console window exists; reopen if closed; request focus
+                ManagedWindow* console = findByTitle("Console");
+                if (!console) {
+                    createWindow("Console");
+                    console = findByTitle("Console");
+                }
+                if (console) {
+                    console->open = true;
+                    focus_request_window_id_ = console->id;
+                }
             }
             ImGui::EndMenu();
         }
@@ -507,8 +571,100 @@ void WindowManager::renderUI() {
                 ImGui::TextUnformatted("Scene view placeholder");
             } else if (w.title == "Inspector") {
                 ImGui::TextUnformatted("Inspector placeholder");
+            } else if (w.title == "Text Editor") {
+                renderEditorWindow();
             } else if (w.title == "Console") {
-                ImGui::TextUnformatted("Console output placeholder");
+                // Controls row: level filter, search, max lines, buffer cap, autoscroll, clear
+                ImGui::SetNextItemWidth(120);
+                ImGui::InputInt("Max lines", &console_max_lines_);
+                if (console_max_lines_ < 100) console_max_lines_ = 100;
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(120);
+                static int bufCapTmp = 0;
+                bufCapTmp = (int)console_buffer_cap_;
+                if (ImGui::InputInt("Buffer cap", &bufCapTmp)) {
+                    if (bufCapTmp < 1000) bufCapTmp = 1000;
+                    console_buffer_cap_ = (size_t)bufCapTmp;
+                    gb2d::logging::set_log_buffer_capacity(console_buffer_cap_);
+                }
+                ImGui::SameLine();
+                ImGui::Checkbox("Autoscroll", &console_autoscroll_);
+                ImGui::SameLine();
+                if (ImGui::Button("Clear")) { gb2d::logging::clear_log_buffer(); }
+
+                // Level filter as toggle buttons
+                auto lvlBtn = [&](const char* label, uint32_t bit){
+                    bool on = (console_level_mask_ & bit) != 0;
+                    if (on) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f,0.6f,0.2f,1.0f));
+                    if (ImGui::SmallButton(label)) {
+                        console_level_mask_ ^= bit;
+                        if ((console_level_mask_ & 0x3F) == 0) console_level_mask_ = 0x3F; // avoid empty
+                    }
+                    if (on) ImGui::PopStyleColor();
+                    ImGui::SameLine();
+                };
+                lvlBtn("Trace", 1u<<0);
+                lvlBtn("Debug", 1u<<1);
+                lvlBtn("Info",  1u<<2);
+                lvlBtn("Warn",  1u<<3);
+                lvlBtn("Error", 1u<<4);
+                lvlBtn("Crit",  1u<<5);
+                ImGui::NewLine();
+
+                // Text search
+                ImGui::SetNextItemWidth(300);
+                char filterBuf[256];
+                std::strncpy(filterBuf, console_text_filter_.c_str(), sizeof(filterBuf));
+                filterBuf[sizeof(filterBuf)-1] = '\0';
+                if (ImGui::InputText("##filter", filterBuf, IM_ARRAYSIZE(filterBuf))) {
+                    console_text_filter_ = filterBuf;
+                }
+
+                // Render lines
+                auto lines = gb2d::logging::read_log_lines_snapshot((size_t)console_max_lines_);
+                ImGui::Separator();
+                ImGui::BeginChild("log_lines", ImVec2(0,0), false, ImGuiWindowFlags_HorizontalScrollbar);
+                for (const auto& ln : lines) {
+                    uint32_t bit = 0;
+                    switch (ln.level) {
+                        case gb2d::logging::Level::trace: bit = 1u<<0; break;
+                        case gb2d::logging::Level::debug: bit = 1u<<1; break;
+                        case gb2d::logging::Level::info:  bit = 1u<<2; break;
+                        case gb2d::logging::Level::warn:  bit = 1u<<3; break;
+                        case gb2d::logging::Level::err:   bit = 1u<<4; break;
+                        case gb2d::logging::Level::critical: bit = 1u<<5; break;
+                        case gb2d::logging::Level::off: break;
+                    }
+                    if ((console_level_mask_ & bit) == 0) continue;
+                    if (!console_text_filter_.empty()) {
+                        // Case-insensitive substring match
+                        auto hay = ln.text;
+                        auto needle = console_text_filter_;
+                        std::transform(hay.begin(), hay.end(), hay.begin(), [](unsigned char c){ return (char)tolower(c); });
+                        std::transform(needle.begin(), needle.end(), needle.begin(), [](unsigned char c){ return (char)tolower(c); });
+                        if (hay.find(needle) == std::string::npos) continue;
+                    }
+
+                    ImVec4 col = ImVec4(0.8f,0.8f,0.8f,1.0f);
+                    switch (ln.level) {
+                        case gb2d::logging::Level::trace: col = ImVec4(0.6f,0.6f,0.6f,1.0f); break;
+                        case gb2d::logging::Level::debug: col = ImVec4(0.7f,0.7f,0.9f,1.0f); break;
+                        case gb2d::logging::Level::info: col = ImVec4(0.8f,0.8f,0.8f,1.0f); break;
+                        case gb2d::logging::Level::warn: col = ImVec4(1.0f,0.9f,0.6f,1.0f); break;
+                        case gb2d::logging::Level::err: col = ImVec4(1.0f,0.6f,0.6f,1.0f); break;
+                        case gb2d::logging::Level::critical: col = ImVec4(1.0f,0.3f,0.3f,1.0f); break;
+                        case gb2d::logging::Level::off: break;
+                    }
+                    ImGui::PushStyleColor(ImGuiCol_Text, col);
+                    ImGui::Text("[%s] %s", gb2d::logging::level_to_label(ln.level), ln.text.c_str());
+                    ImGui::PopStyleColor();
+                }
+
+                if (console_autoscroll_) {
+                    float at_bottom = ImGui::GetScrollY() - ImGui::GetScrollMaxY();
+                    if (at_bottom >= -2.0f) ImGui::SetScrollHereY(1.0f);
+                }
+                ImGui::EndChild();
             } else if (w.title.rfind("Preview:", 0) == 0) {
                 auto itp = previews_.find(w.id);
                 if (itp != previews_.end()) {
@@ -545,6 +701,20 @@ void WindowManager::renderUI() {
     }
     undock_requests_.clear();
 
+    // Process focus requests once windows are visible
+    if (focus_request_window_id_.has_value()) {
+        for (auto& w : windows_) {
+            if (w.id == *focus_request_window_id_) {
+                std::string label = makeLabel(w);
+                if (ImGuiWindow* win = ImGui::FindWindowByName(label.c_str())) {
+                    ImGui::FocusWindow(win);
+                }
+                break;
+            }
+        }
+        focus_request_window_id_.reset();
+    }
+
     // File dialog rendering and result handling
     if (ImGuiFileDialog::Instance()->Display("FileOpenDlg")) {
         if (ImGuiFileDialog::Instance()->IsOk()) {
@@ -554,7 +724,16 @@ void WindowManager::renderUI() {
                 last_folder_ = std::filesystem::path(filePathName).parent_path().string();
             } catch (...) {}
             addRecentFile(filePathName);
-            openFilePreview(filePathName);
+            // Route text-like files into the editor
+            std::string ext;
+            try { ext = std::filesystem::path(filePathName).extension().string(); } catch (...) { ext.clear(); }
+            for (auto& c : ext) c = (char)tolower((unsigned char)c);
+            if (isTextLikeExtension(ext)) {
+                ensureEditorWindow(true);
+                openEditorFile(filePathName);
+            } else {
+                openFilePreview(filePathName);
+            }
             // Optionally, create a window showing the file name
             // createWindow(std::filesystem::path(filePathName).filename().string());
         }
@@ -668,3 +847,178 @@ WindowManager::ManagedWindow* WindowManager::findByTitle(const std::string& titl
 }
 
 } // namespace gb2d
+
+// ===== Editor helpers implementation =====
+namespace {
+    inline std::string toLower(std::string s){ for (auto& c : s) c = (char)tolower((unsigned char)c); return s; }
+}
+
+void gb2d::WindowManager::ensureEditorWindow(bool focus) {
+    if (!editor_.exists) {
+        std::string id = createWindow("Text Editor");
+        editor_.exists = true;
+        editor_.open = true;
+        editor_.id = id;
+        editor_.current = -1;
+    } else {
+        if (ManagedWindow* e = findByTitle("Text Editor")) e->open = true;
+    }
+    if (focus) focus_request_window_id_ = editor_.id;
+}
+
+bool gb2d::WindowManager::isTextLikeExtension(const std::string& ext) {
+    static const char* exts[] = { ".txt", ".md", ".log", ".cmake", ".ini", ".json", ".yaml", ".yml",
+        ".h", ".hpp", ".c", ".cpp", ".cc", ".cxx", ".glsl", ".vert", ".frag", ".hlsl", ".lua", ".sql" };
+    for (auto* e : exts) if (ext == e) return true; return false;
+}
+
+const TextEditor::LanguageDefinition& gb2d::WindowManager::languageForExtension(const std::string& ext, std::string& outName) {
+    std::string e = toLower(ext);
+    if (e == ".h" || e == ".hpp" || e == ".c" || e == ".cpp" || e == ".cc" || e == ".cxx") { outName = "C/C++"; return TextEditor::LanguageDefinition::CPlusPlus(); }
+    if (e == ".glsl" || e == ".vert" || e == ".frag") { outName = "GLSL"; return TextEditor::LanguageDefinition::GLSL(); }
+    if (e == ".hlsl") { outName = "HLSL"; return TextEditor::LanguageDefinition::HLSL(); }
+    if (e == ".c") { outName = "C"; return TextEditor::LanguageDefinition::C(); }
+    if (e == ".sql") { outName = "SQL"; return TextEditor::LanguageDefinition::SQL(); }
+    if (e == ".lua") { outName = "Lua"; return TextEditor::LanguageDefinition::Lua(); }
+    outName = "Plain"; return TextEditor::LanguageDefinition::CPlusPlus();
+}
+
+void gb2d::WindowManager::openEditorFile(const std::string& path) {
+    ensureEditorWindow(true);
+    // If already open, focus it
+    for (int i = 0; i < (int)editor_.tabs.size(); ++i) {
+        if (editor_.tabs[i].path == path) { editor_.current = i; return; }
+    }
+    EditorTab tab;
+    tab.path = path;
+    tab.title = std::filesystem::path(path).filename().string();
+    tab.editor = std::make_unique<TextEditor>();
+    tab.editor->SetShowWhitespaces(false);
+    tab.editor->SetPalette(TextEditor::GetDarkPalette());
+    std::string ext;
+    try { ext = std::filesystem::path(path).extension().string(); } catch (...) { ext.clear(); }
+    tab.editor->SetLanguageDefinition(languageForExtension(ext, tab.langName));
+    // Load content
+    try {
+        std::ifstream ifs(path, std::ios::binary);
+        std::ostringstream oss; oss << ifs.rdbuf();
+        tab.editor->SetText(oss.str());
+        tab.dirty = false;
+    } catch (...) {
+        tab.editor->SetText("");
+        tab.dirty = false;
+    }
+    editor_.tabs.push_back(std::move(tab));
+    editor_.current = (int)editor_.tabs.size() - 1;
+}
+
+bool gb2d::WindowManager::saveEditorTab(int index, bool saveAs) {
+    if (index < 0 || index >= (int)editor_.tabs.size()) return false;
+    auto& t = editor_.tabs[index];
+    std::string savePath = t.path;
+    if (saveAs || savePath.empty()) {
+        IGFD::FileDialogConfig cfg; cfg.path = last_folder_.empty() ? std::string(".") : last_folder_;
+        ImGuiFileDialog::Instance()->OpenDialog("EditorSaveAsDlg", "Save File As", ".*", cfg);
+        return false;
+    }
+    try {
+        std::ofstream ofs(savePath, std::ios::binary | std::ios::trunc);
+        auto content = t.editor->GetText();
+        ofs.write(content.data(), (std::streamsize)content.size());
+        t.dirty = false;
+        addToast("Saved: " + savePath);
+        addRecentFile(savePath);
+        return true;
+    } catch (...) {
+        addToast("Failed to save: " + savePath);
+        return false;
+    }
+}
+
+void gb2d::WindowManager::renderEditorWindow() {
+    // Editor menu bar
+    if (ImGui::BeginMenuBar()) {
+        if (ImGui::BeginMenu("File")) {
+            if (ImGui::MenuItem("New")) {
+                EditorTab tab; tab.title = "Untitled"; tab.editor = std::make_unique<TextEditor>();
+                tab.editor->SetPalette(TextEditor::GetDarkPalette()); tab.editor->SetShowWhitespaces(false);
+                tab.editor->SetLanguageDefinition(TextEditor::LanguageDefinition::CPlusPlus());
+                tab.editor->SetText(""); tab.dirty = false;
+                editor_.tabs.push_back(std::move(tab)); editor_.current = (int)editor_.tabs.size() - 1;
+            }
+            if (ImGui::MenuItem("Open...")) {
+                IGFD::FileDialogConfig cfg; cfg.path = last_folder_.empty() ? std::string(".") : last_folder_;
+                ImGuiFileDialog::Instance()->OpenDialog("EditorOpenDlg", "Open File", ".*", cfg);
+            }
+            bool canSave = editor_.current >= 0 && editor_.current < (int)editor_.tabs.size();
+            if (!canSave) ImGui::BeginDisabled();
+            if (ImGui::MenuItem("Save")) { saveEditorTab(editor_.current, false); }
+            if (ImGui::MenuItem("Save As...")) { saveEditorTab(editor_.current, true); }
+            if (!canSave) ImGui::EndDisabled();
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu("Theme")) {
+            bool canApply = editor_.current >= 0 && editor_.current < (int)editor_.tabs.size();
+            if (!canApply) ImGui::BeginDisabled();
+            if (ImGui::MenuItem("Dark") && canApply) editor_.tabs[editor_.current].editor->SetPalette(TextEditor::GetDarkPalette());
+            if (ImGui::MenuItem("Light") && canApply) editor_.tabs[editor_.current].editor->SetPalette(TextEditor::GetLightPalette());
+            if (ImGui::MenuItem("Retro Blue") && canApply) editor_.tabs[editor_.current].editor->SetPalette(TextEditor::GetRetroBluePalette());
+            if (!canApply) ImGui::EndDisabled();
+            ImGui::EndMenu();
+        }
+        ImGui::EndMenuBar();
+    }
+
+    // Tabs body
+    if (ImGui::BeginTabBar("EditorTabs", ImGuiTabBarFlags_Reorderable | ImGuiTabBarFlags_AutoSelectNewTabs)) {
+        for (int i = 0; i < (int)editor_.tabs.size(); ++i) {
+            auto& t = editor_.tabs[i];
+            std::string label = t.title; if (t.dirty) label += " *";
+            if (ImGui::BeginTabItem(label.c_str(), nullptr)) {
+                editor_.current = i;
+                if (t.editor->IsTextChanged()) t.dirty = true;
+                ImGui::TextUnformatted(t.path.empty() ? "(unsaved)" : t.path.c_str());
+                if (!t.langName.empty()) { ImGui::SameLine(); ImGui::TextDisabled("[%s]", t.langName.c_str()); }
+                t.editor->Render("##text");
+                ImGui::EndTabItem();
+            }
+        }
+        ImGui::EndTabBar();
+    }
+
+    // Editor Open dialog results
+    if (ImGuiFileDialog::Instance()->Display("EditorOpenDlg")) {
+        if (ImGuiFileDialog::Instance()->IsOk()) {
+            auto path = ImGuiFileDialog::Instance()->GetFilePathName();
+            addRecentFile(path);
+            try { last_folder_ = std::filesystem::path(path).parent_path().string(); } catch (...) {}
+            openEditorFile(path);
+        }
+        ImGuiFileDialog::Instance()->Close();
+    }
+
+    // Editor Save As dialog results
+    if (ImGuiFileDialog::Instance()->Display("EditorSaveAsDlg")) {
+        if (ImGuiFileDialog::Instance()->IsOk()) {
+            auto savePath = ImGuiFileDialog::Instance()->GetFilePathName();
+            if (editor_.current >= 0 && editor_.current < (int)editor_.tabs.size()) {
+                auto& t = editor_.tabs[editor_.current];
+                try {
+                    std::ofstream ofs(savePath, std::ios::binary | std::ios::trunc);
+                    auto content = t.editor->GetText();
+                    ofs.write(content.data(), (std::streamsize)content.size());
+                    t.dirty = false;
+                    t.path = savePath;
+                    t.title = std::filesystem::path(savePath).filename().string();
+                    std::string ext; try { ext = std::filesystem::path(savePath).extension().string(); } catch (...) { ext.clear(); }
+                    t.editor->SetLanguageDefinition(languageForExtension(ext, t.langName));
+                    addToast("Saved: " + savePath);
+                    addRecentFile(savePath);
+                } catch (...) {
+                    addToast("Failed to save: " + savePath);
+                }
+            }
+        }
+        ImGuiFileDialog::Instance()->Close();
+    }
+}

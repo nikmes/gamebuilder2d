@@ -1,0 +1,11 @@
+{
+  "ui": {
+    "theme": "dark"
+  },
+  "version": 1,
+  "window": {
+    "fullscreen": true,
+    "height": 720,
+    "width": 1280
+  }
+}
