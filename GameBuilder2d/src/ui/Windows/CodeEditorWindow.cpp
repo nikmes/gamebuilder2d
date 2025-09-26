@@ -71,6 +71,7 @@ bool CodeEditorWindow::saveCurrent(bool saveAs) {
     if (saveAs || savePath.empty()) {
         IGFD::FileDialogConfig cfg; // optional: could set path from context's recent folder service
         ImGuiFileDialog::Instance()->OpenDialog("EditorSaveAsDlg_Modular", "Save File As", ".*", cfg);
+        pending_save_as_index_ = current_;
         return false; // actual save will happen when dialog result is processed in render
     }
     try {
@@ -97,6 +98,7 @@ void CodeEditorWindow::render(WindowContext& /*ctx*/) {
             if (!canSave) ImGui::BeginDisabled();
             if (ImGui::MenuItem("Save")) { saveCurrent(false); }
             if (ImGui::MenuItem("Save As...")) { saveCurrent(true); }
+            if (ImGui::MenuItem("Save All")) { saveAll(); }
             if (!canSave) ImGui::EndDisabled();
             ImGui::EndMenu();
         }
@@ -110,6 +112,28 @@ void CodeEditorWindow::render(WindowContext& /*ctx*/) {
             ImGui::EndMenu();
         }
         ImGui::EndMenuBar();
+    }
+
+    // Toolbar above tabs
+    {
+        if (ImGui::Button("New")) newUntitled();
+        ImGui::SameLine();
+        if (ImGui::Button("Open")) {
+            IGFD::FileDialogConfig cfg; 
+            ImGuiFileDialog::Instance()->OpenDialog("EditorOpenDlg_Modular", "Open File", ".*", cfg);
+        }
+        ImGui::SameLine();
+        bool canSave = current_ >= 0 && current_ < (int)tabs_.size();
+        if (!canSave) ImGui::BeginDisabled();
+        if (ImGui::Button("Save")) { saveCurrent(false); }
+        ImGui::SameLine();
+        if (ImGui::Button("Save All")) { saveAll(); }
+        ImGui::SameLine();
+        if (ImGui::Button("Close Tab")) { closeCurrent(); }
+        ImGui::SameLine();
+        if (ImGui::Button("Close All")) { closeAll(); }
+        if (!canSave) ImGui::EndDisabled();
+        ImGui::Separator();
     }
 
     // Tab bar
@@ -142,8 +166,10 @@ void CodeEditorWindow::render(WindowContext& /*ctx*/) {
     if (ImGuiFileDialog::Instance()->Display("EditorSaveAsDlg_Modular")) {
         if (ImGuiFileDialog::Instance()->IsOk()) {
             auto savePath = ImGuiFileDialog::Instance()->GetFilePathName();
-            if (current_ >= 0 && current_ < (int)tabs_.size()) {
-                auto& t = tabs_[current_];
+            int idx = current_;
+            if (pending_save_as_index_.has_value() && *pending_save_as_index_ >= 0 && *pending_save_as_index_ < (int)tabs_.size()) idx = *pending_save_as_index_;
+            if (idx >= 0 && idx < (int)tabs_.size()) {
+                auto& t = tabs_[idx];
                 try {
                     std::ofstream ofs(savePath, std::ios::binary | std::ios::trunc);
                     auto content = t.editor->GetText();
@@ -158,8 +184,47 @@ void CodeEditorWindow::render(WindowContext& /*ctx*/) {
                 }
             }
         }
+        pending_save_as_index_.reset();
         ImGuiFileDialog::Instance()->Close();
     }
+}
+
+bool CodeEditorWindow::saveAll() {
+    bool anySaved = false;
+    for (int i = 0; i < (int)tabs_.size(); ++i) {
+        auto& t = tabs_[i];
+        if (!t.dirty) continue;
+        if (t.path.empty()) {
+            // open Save As for this index (non-blocking), first one at a time
+            if (!pending_save_as_index_.has_value()) {
+                pending_save_as_index_ = i;
+                IGFD::FileDialogConfig cfg; 
+                ImGuiFileDialog::Instance()->OpenDialog("EditorSaveAsDlg_Modular", "Save File As", ".*", cfg);
+            }
+        } else {
+            try {
+                std::ofstream ofs(t.path, std::ios::binary | std::ios::trunc);
+                auto content = t.editor->GetText();
+                ofs.write(content.data(), (std::streamsize)content.size());
+                t.dirty = false;
+                anySaved = true;
+            } catch (...) {
+                // ignore error for now
+            }
+        }
+    }
+    return anySaved;
+}
+
+void CodeEditorWindow::closeCurrent() {
+    if (current_ < 0 || current_ >= (int)tabs_.size()) return;
+    tabs_.erase(tabs_.begin() + current_);
+    if (tabs_.empty()) current_ = -1; else if (current_ >= (int)tabs_.size()) current_ = (int)tabs_.size() - 1;
+}
+
+void CodeEditorWindow::closeAll() {
+    tabs_.clear();
+    current_ = -1;
 }
 
 void CodeEditorWindow::serialize(nlohmann::json& out) const {

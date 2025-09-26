@@ -29,6 +29,9 @@ public:
     void openFile(const std::string& path);
     void newUntitled();
     bool saveCurrent(bool saveAs);
+    bool saveAll();
+    void closeCurrent();
+    void closeAll();
 
 private:
     struct Tab {
@@ -42,6 +45,7 @@ private:
     std::string title_ { "Text Editor" };
     std::vector<Tab> tabs_{};
     int current_{-1};
+    std::optional<int> pending_save_as_index_{}; // index of tab awaiting Save As dialog result
 
 public:
     static bool isTextLikeExtension(const std::string& ext);

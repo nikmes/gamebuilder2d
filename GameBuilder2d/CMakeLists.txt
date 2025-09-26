@@ -25,6 +25,8 @@ add_library(gb2d_window STATIC
   "src/ui/Windows/CodeEditorWindow.cpp"
   "src/ui/Windows/FilePreviewWindow.h"
   "src/ui/Windows/FilePreviewWindow.cpp"
+  "src/ui/Windows/SpaceInvadersWindow.h"
+  "src/ui/Windows/SpaceInvadersWindow.cpp"
 )
 target_include_directories(gb2d_window PUBLIC "src")
 set_property(TARGET gb2d_window PROPERTY CXX_STANDARD 20)

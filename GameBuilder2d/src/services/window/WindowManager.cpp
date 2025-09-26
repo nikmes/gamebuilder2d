@@ -23,6 +23,7 @@
 // New modular windows
 #include "ui/Windows/CodeEditorWindow.h"
 #include "ui/Windows/FilePreviewWindow.h"
+#include "ui/Windows/SpaceInvadersWindow.h"
 
 namespace gb2d {
 
@@ -51,6 +52,15 @@ static void RegisterBuiltinWindows(WindowRegistry& reg) {
         return std::make_unique<FilePreviewWindow>();
     };
     reg.registerType(std::move(previewDesc));
+
+    // Space Invaders window
+    WindowTypeDesc invadersDesc;
+    invadersDesc.typeId = "space-invaders";
+    invadersDesc.displayName = "Space Invaders";
+    invadersDesc.factory = [](WindowContext&) -> std::unique_ptr<IWindow> {
+        return std::make_unique<SpaceInvadersWindow>();
+    };
+    reg.registerType(std::move(invadersDesc));
 }
 
 WindowManager::WindowManager() {
@@ -611,6 +621,16 @@ void WindowManager::renderUI() {
                 ManagedWindow* existing = findByTypeId("console-log");
                 if (!existing) {
                     std::string id = spawnWindowByType("console-log", std::string("Console"));
+                    if (!id.empty()) focus_request_window_id_ = id;
+                } else {
+                    existing->open = true;
+                    focus_request_window_id_ = existing->id;
+                }
+            }
+            if (ImGui::MenuItem("Space Invaders")) {
+                ManagedWindow* existing = findByTypeId("space-invaders");
+                if (!existing) {
+                    std::string id = spawnWindowByType("space-invaders", std::string("Space Invaders"));
                     if (!id.empty()) focus_request_window_id_ = id;
                 } else {
                     existing->open = true;
