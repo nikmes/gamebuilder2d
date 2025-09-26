@@ -21,6 +21,11 @@ public:
     WindowManager();
     ~WindowManager();
 
+    // Explicit, idempotent teardown. Safe to call multiple times. Ensures
+    // resources that depend on ImGui / raylib are released while those
+    // subsystems are still alive (before global/static shutdown).
+    void shutdown();
+
     struct ManagedWindow {
         std::string id;
         std::string title;
@@ -168,6 +173,9 @@ private:
     // Log console helpers
     void initLogEditorIfNeeded();
     void rebuildLogEditorIfNeeded();
+
+    // Shutdown state guard
+    bool shutting_down_{false};
 };
 
 } // namespace gb2d

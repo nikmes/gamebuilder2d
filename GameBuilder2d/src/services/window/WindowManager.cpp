@@ -26,7 +26,30 @@ WindowManager::WindowManager() {
     // Apply default console buffer capacity at startup
     gb2d::logging::set_log_buffer_capacity(console_buffer_cap_);
 }
-WindowManager::~WindowManager() = default;
+WindowManager::~WindowManager() {
+    shutdown();
+}
+
+void WindowManager::shutdown() {
+    if (shutting_down_) return;
+    shutting_down_ = true;
+    // Close editor tabs explicitly (unique_ptr will handle editors)
+    editor_.tabs.clear();
+    // Release any image previews (unload textures)
+    for (auto &kv : previews_) {
+        Preview &p = kv.second;
+        if (p.kind == Preview::Kind::Image && p.loaded && p.texId != 0) {
+            Texture2D tex{ (int)p.texId, p.imgWidth, p.imgHeight, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 };
+            UnloadTexture(tex);
+            p.texId = 0;
+            p.loaded = false;
+        }
+    }
+    previews_.clear();
+    windows_.clear();
+    undock_requests_.clear();
+    toasts_.clear();
+}
 
 const Layout& WindowManager::getLayout() const { return layout_; }
 
@@ -367,6 +390,7 @@ void WindowManager::renderDockTargetsOverlay() {
 }
 
 void WindowManager::renderUI() {
+    if (shutting_down_) return; // guard against late calls during teardown
     ImGuiIO& io = ImGui::GetIO();
     if (!(io.ConfigFlags & ImGuiConfigFlags_DockingEnable)) {
         ImGui::TextUnformatted("Docking is disabled. Enable ImGuiConfigFlags_DockingEnable.");
