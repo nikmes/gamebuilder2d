@@ -28,9 +28,9 @@ int main()
     // Read the value back using the same manager
     bool fullscreen = gb2d::ConfigurationManager::getBool("window::fullscreen", false);
 
-    unsigned int flags = FLAG_FULLSCREEN_MODE;
+    unsigned int flags = FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT;
 
-    //if (fullscreen) flags |= FLAG_FULLSCREEN_MODE;
+    if (fullscreen) flags = FLAG_FULLSCREEN_MODE | FLAG_VSYNC_HINT;;
 
     SetConfigFlags(flags);
     InitWindow(1920, 1080, "GameBuilder2d + rlImGui");

@@ -14,6 +14,17 @@ add_library(gb2d_window STATIC
   "src/services/window/DockRegion.cpp"
   "src/services/window/Layout.cpp"
   "src/services/window/WindowManager.cpp"
+  # UI (modular window system scaffolding)
+  "src/ui/Window.h"
+  "src/ui/WindowContext.h"
+  "src/ui/WindowRegistry.h"
+  "src/ui/WindowRegistry.cpp"
+  "src/ui/Windows/ConsoleLogWindow.h"
+  "src/ui/Windows/ConsoleLogWindow.cpp"
+  "src/ui/Windows/CodeEditorWindow.h"
+  "src/ui/Windows/CodeEditorWindow.cpp"
+  "src/ui/Windows/FilePreviewWindow.h"
+  "src/ui/Windows/FilePreviewWindow.cpp"
 )
 target_include_directories(gb2d_window PUBLIC "src")
 set_property(TARGET gb2d_window PROPERTY CXX_STANDARD 20)
@@ -47,7 +58,6 @@ include(FetchContent)
 # Prefer turning off all optional builds (examples/games/tests) to reduce configure/build time
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(BUILD_GAMES OFF CACHE BOOL "" FORCE)
-set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 # Some raylib forks/cmake files also check namespaced options; set them too just in case
 set(RAYLIB_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(RAYLIB_BUILD_GAMES OFF CACHE BOOL "" FORCE)
@@ -64,7 +74,7 @@ set(SPDLOG_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(SPDLOG_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(SPDLOG_BUILD_BENCH OFF CACHE BOOL "" FORCE)
 
-# Fetch raylib
+# Fetch raylib (Populate then patch cmake_minimum_required to avoid deprecation warning)
 FetchContent_Declare(
   raylib
   GIT_REPOSITORY https://github.com/raysan5/raylib.git
@@ -72,7 +82,21 @@ FetchContent_Declare(
   GIT_SHALLOW TRUE
   GIT_PROGRESS TRUE
 )
-FetchContent_MakeAvailable(raylib)
+if (POLICY CMP0169)
+  cmake_policy(PUSH)
+  cmake_policy(SET CMP0169 OLD)
+endif()
+FetchContent_Populate(raylib)
+if (POLICY CMP0169)
+  cmake_policy(POP)
+endif()
+# Patch raylib's top-level CMakeLists to use a modern cmake_minimum_required range
+if (EXISTS "${raylib_SOURCE_DIR}/CMakeLists.txt")
+  file(READ "${raylib_SOURCE_DIR}/CMakeLists.txt" RAYLIB_CMAKELISTS)
+  string(REPLACE "cmake_minimum_required(VERSION 3.5)" "cmake_minimum_required(VERSION 3.16...3.29)" RAYLIB_CMAKELISTS "${RAYLIB_CMAKELISTS}")
+  file(WRITE "${raylib_SOURCE_DIR}/CMakeLists.txt" "${RAYLIB_CMAKELISTS}")
+endif()
+add_subdirectory(${raylib_SOURCE_DIR} ${raylib_BINARY_DIR})
 
 # Fetch imgui sources and build as a static library
 FetchContent_Declare(
@@ -240,7 +264,7 @@ target_compile_definitions(rlImGui PUBLIC IMGUI_DEFINE_MATH_OPERATORS)
 target_link_libraries(rlImGui PUBLIC raylib imgui)
 
 # Window library depends on ImGui, file dialog, and raylib
-target_link_libraries(gb2d_window PUBLIC imgui imguifiledialog raylib gb2d_logging imguicolortextedit)
+target_link_libraries(gb2d_window PUBLIC imgui imguifiledialog raylib gb2d_logging imguicolortextedit nlohmann_json::nlohmann_json)
 
 target_link_libraries(GameBuilder2d PRIVATE raylib rlImGui imgui imguifiledialog gb2d_configuration gb2d_window gb2d_logging)
 

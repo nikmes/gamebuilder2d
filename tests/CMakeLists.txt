@@ -33,3 +33,18 @@ target_compile_definitions(config_tests PRIVATE GB2D_INTERNAL_TESTING=1)
 
 include(Catch)
 catch_discover_tests(config_tests)
+
+# Window JSON round-trip tests
+add_executable(window_tests
+  test_bootstrap.cpp
+  unit/windows/test_window_json_roundtrip.cpp
+)
+target_include_directories(window_tests PRIVATE
+  ${CMAKE_SOURCE_DIR}/GameBuilder2d/src
+)
+target_link_libraries(window_tests PRIVATE Catch2::Catch2WithMain gb2d_window)
+set_property(TARGET window_tests PROPERTY CXX_STANDARD 20)
+target_compile_definitions(window_tests PRIVATE GB2D_INTERNAL_TESTING=1)
+
+include(Catch)
+catch_discover_tests(window_tests)

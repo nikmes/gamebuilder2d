@@ -7,7 +7,8 @@
       "generator": "Visual Studio 17 2022",
       "binaryDir": "${sourceDir}/build-vs-2022-x64-debug",
       "cacheVariables": {
-        "CMAKE_CONFIGURATION_TYPES": "Debug"
+        "CMAKE_CONFIGURATION_TYPES": "Debug",
+        "BUILD_TESTING": "OFF"
       },
       "architecture": { "value": "x64", "strategy": "external" },
       "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
@@ -18,7 +19,32 @@
       "generator": "Visual Studio 17 2022",
       "binaryDir": "${sourceDir}/build-vs-2022-x64-release",
       "cacheVariables": {
-        "CMAKE_CONFIGURATION_TYPES": "Release"
+        "CMAKE_CONFIGURATION_TYPES": "Release",
+        "BUILD_TESTING": "OFF"
+      },
+      "architecture": { "value": "x64", "strategy": "external" },
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
+    },
+    {
+      "name": "windows-vs2022-x64-debug-tests",
+      "displayName": "Windows VS2022 x64 Debug (Tests)",
+      "generator": "Visual Studio 17 2022",
+      "binaryDir": "${sourceDir}/build-vs-2022-x64-debug-tests",
+      "cacheVariables": {
+        "CMAKE_CONFIGURATION_TYPES": "Debug",
+        "BUILD_TESTING": "ON"
+      },
+      "architecture": { "value": "x64", "strategy": "external" },
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
+    },
+    {
+      "name": "windows-vs2022-x64-release-tests",
+      "displayName": "Windows VS2022 x64 Release (Tests)",
+      "generator": "Visual Studio 17 2022",
+      "binaryDir": "${sourceDir}/build-vs-2022-x64-release-tests",
+      "cacheVariables": {
+        "CMAKE_CONFIGURATION_TYPES": "Release",
+        "BUILD_TESTING": "ON"
       },
       "architecture": { "value": "x64", "strategy": "external" },
       "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
@@ -50,6 +76,16 @@
       "name": "windows-vs2022-x64-release",
       "displayName": "Build Windows VS2022 x64 Release",
       "configurePreset": "windows-vs2022-x64-release"
+    },
+    {
+      "name": "windows-vs2022-x64-debug-tests",
+      "displayName": "Build Windows VS2022 x64 Debug (Tests)",
+      "configurePreset": "windows-vs2022-x64-debug-tests"
+    },
+    {
+      "name": "windows-vs2022-x64-release-tests",
+      "displayName": "Build Windows VS2022 x64 Release (Tests)",
+      "configurePreset": "windows-vs2022-x64-release-tests"
     },
     {
       "name": "wsl-debug",

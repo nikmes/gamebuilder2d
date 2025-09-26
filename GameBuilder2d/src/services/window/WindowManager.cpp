@@ -11,20 +11,56 @@
 #include <algorithm>
 #include <cstring>
 #include <memory>
+#include <nlohmann/json.hpp>
 #include "services/logger/LogManager.h"
 // ImGuiColorTextEdit
 #include <TextEditor.h>
 #include <functional>
+// Modular windows
+#include "ui/WindowRegistry.h"
+#include "ui/WindowContext.h"
+#include "ui/Windows/ConsoleLogWindow.h"
+// New modular windows
+#include "ui/Windows/CodeEditorWindow.h"
+#include "ui/Windows/FilePreviewWindow.h"
 
 namespace gb2d {
 
+static void RegisterBuiltinWindows(WindowRegistry& reg) {
+    // Console Log window
+    WindowTypeDesc consoleDesc;
+    consoleDesc.typeId = "console-log";
+    consoleDesc.displayName = "Console Log";
+    consoleDesc.factory = [](WindowContext&) -> std::unique_ptr<IWindow> {
+        return std::make_unique<ConsoleLogWindow>();
+    };
+    reg.registerType(std::move(consoleDesc));
+    // Code Editor window
+    WindowTypeDesc editorDesc;
+    editorDesc.typeId = "code-editor";
+    editorDesc.displayName = "Text Editor";
+    editorDesc.factory = [](WindowContext&) -> std::unique_ptr<IWindow> {
+        return std::make_unique<CodeEditorWindow>();
+    };
+    reg.registerType(std::move(editorDesc));
+    // File Preview window
+    WindowTypeDesc previewDesc;
+    previewDesc.typeId = "file-preview";
+    previewDesc.displayName = "File Preview";
+    previewDesc.factory = [](WindowContext&) -> std::unique_ptr<IWindow> {
+        return std::make_unique<FilePreviewWindow>();
+    };
+    reg.registerType(std::move(previewDesc));
+}
+
 WindowManager::WindowManager() {
+    // Initialize window registry (no behavior change yet)
+    RegisterBuiltinWindows(window_registry_);
     // Try auto-load last layout if ImGui context is alive
     if (ImGui::GetCurrentContext() != nullptr) {
         loadLayout("last");
     }
-    // Apply default console buffer capacity at startup
-    gb2d::logging::set_log_buffer_capacity(console_buffer_cap_);
+    // Console buffer capacity can be adjusted by ConsoleLogWindow; no manager default needed.
 }
 WindowManager::~WindowManager() {
     shutdown();
@@ -33,19 +69,7 @@ WindowManager::~WindowManager() {
 void WindowManager::shutdown() {
     if (shutting_down_) return;
     shutting_down_ = true;
-    // Close editor tabs explicitly (unique_ptr will handle editors)
-    editor_.tabs.clear();
-    // Release any image previews (unload textures)
-    for (auto &kv : previews_) {
-        Preview &p = kv.second;
-        if (p.kind == Preview::Kind::Image && p.loaded && p.texId != 0) {
-            Texture2D tex{ (int)p.texId, p.imgWidth, p.imgHeight, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 };
-            UnloadTexture(tex);
-            p.texId = 0;
-            p.loaded = false;
-        }
-    }
-    previews_.clear();
+    // Modular windows own their resources; just clear containers
     windows_.clear();
     undock_requests_.clear();
     toasts_.clear();
@@ -58,9 +82,30 @@ std::string WindowManager::createWindow(const std::string& title, std::optional<
     w.id = "win-" + std::to_string(next_id_++);
     w.title = title.empty() ? w.id : title;
     if (initialSize.has_value()) w.minSize = initialSize;
-    windows_.push_back(w);
+    windows_.push_back(std::move(w));
     gb2d::logging::LogManager::debug("Created window: {} (title: {})", w.id, w.title);
     return w.id;
+}
+
+std::string WindowManager::spawnWindowByType(const std::string& typeId,
+                                             std::optional<std::string> desiredTitle,
+                                             std::optional<Size> initialSize) {
+    // Construct a minimal context; services can be wired here later
+    WindowContext ctx{};
+    auto impl = window_registry_.create(typeId, ctx);
+    if (!impl) return {};
+    ManagedWindow w{};
+    w.id = "win-" + std::to_string(next_id_++);
+    // Prefer provided title, else impl title, else fallback to typeId
+    if (desiredTitle.has_value() && !desiredTitle->empty()) w.title = *desiredTitle;
+    else {
+        std::string t = impl->title();
+        w.title = t.empty() ? typeId : t;
+    }
+    if (initialSize.has_value()) w.minSize = initialSize;
+    w.impl = std::move(impl);
+    windows_.push_back(std::move(w));
+    return windows_.back().id;
 }
 
 bool WindowManager::dockWindow(const std::string& windowId, const std::string& targetRegionId, DockPosition position) {
@@ -174,6 +219,7 @@ bool WindowManager::saveLayout(const std::optional<std::string>& name) {
 
         const fs::path windowsPath = base / (layoutName + ".wm.txt");
         const fs::path imguiPath   = base / (layoutName + ".imgui.ini");
+        const fs::path jsonPath    = base / (layoutName + ".layout.json");
 
         auto escape = [](const std::string& s) {
             std::string out;
@@ -192,11 +238,7 @@ bool WindowManager::saveLayout(const std::optional<std::string>& name) {
         ofs << "next_id=" << next_id_ << "\n";
         ofs << "last_folder=" << escape(last_folder_) << "\n";
         // Persist console settings
-        ofs << "console_autoscroll=" << (console_autoscroll_ ? 1 : 0) << "\n";
-        ofs << "console_max_lines=" << console_max_lines_ << "\n";
-        ofs << "console_buffer_cap=" << console_buffer_cap_ << "\n";
-        ofs << "console_level_mask=" << console_level_mask_ << "\n";
-        ofs << "console_text_filter=" << escape(console_text_filter_) << "\n";
+    // Console settings are now serialized by ConsoleLogWindow implementation.
         if (!recent_files_.empty()) {
             ofs << "recent=";
             for (size_t i = 0; i < recent_files_.size(); ++i) {
@@ -212,6 +254,37 @@ bool WindowManager::saveLayout(const std::optional<std::string>& name) {
                 << "\n";
         }
         ofs.close();
+
+        // New: Write JSON layout in parallel
+        using nlohmann::json;
+        json j;
+        j["version"] = 1;
+        j["nextId"] = next_id_;
+        j["lastFolder"] = last_folder_;
+        j["recentFiles"] = recent_files_;
+        json jwins = json::array();
+        for (const auto& w : windows_) {
+            json jw;
+            jw["id"] = w.id;
+            jw["title"] = w.title;
+            jw["open"] = w.open;
+            if (w.minSize.has_value()) {
+                jw["minSize"] = { {"width", w.minSize->width}, {"height", w.minSize->height} };
+            }
+            std::string type = w.impl ? std::string(w.impl->typeId()) : std::string();
+            jw["type"] = type;
+            if (w.impl) {
+                json state;
+                try { w.impl->serialize(state); } catch (...) {}
+                jw["state"] = std::move(state);
+            }
+            jwins.push_back(std::move(jw));
+        }
+        j["windows"] = std::move(jwins);
+        std::ofstream jofs(jsonPath, std::ios::trunc);
+        if (jofs) {
+            jofs << j.dump(2);
+        }
 
         // Save ImGui dock/positions
         ImGui::SaveIniSettingsToDisk(imguiPath.string().c_str());
@@ -230,11 +303,77 @@ bool WindowManager::loadLayout(const std::string& name) {
     const fs::path base = fs::path("out") / "layouts";
     const fs::path windowsPath = base / (layoutName + ".wm.txt");
     const fs::path imguiPath   = base / (layoutName + ".imgui.ini");
+    const fs::path jsonPath    = base / (layoutName + ".layout.json");
 
     bool loadedAny = false;
 
-    // Load windows metadata
-    if (fs::exists(windowsPath)) {
+    // Prefer JSON layout if present
+    if (fs::exists(jsonPath)) {
+        try {
+            using nlohmann::json;
+            std::ifstream jifs(jsonPath);
+            json j; jifs >> j;
+            // Reset state
+            windows_.clear();
+            // Metadata
+            if (j.contains("nextId")) {
+                try { next_id_ = std::max(next_id_, j.value("nextId", next_id_)); } catch (...) {}
+            }
+            last_folder_ = j.value(std::string("lastFolder"), std::string(""));
+            recent_files_.clear();
+            if (j.contains("recentFiles") && j["recentFiles"].is_array()) {
+                for (const auto& rf : j["recentFiles"]) {
+                    try { recent_files_.push_back(rf.get<std::string>()); } catch (...) {}
+                }
+            }
+            // Windows
+            if (j.contains("windows") && j["windows"].is_array()) {
+                for (const auto& jw : j["windows"]) {
+                    try {
+                        ManagedWindow w{};
+                        w.id = jw.value(std::string("id"), std::string(""));
+                        if (w.id.empty()) { w.id = "win-" + std::to_string(next_id_++); }
+                        w.title = jw.value(std::string("title"), std::string(""));
+                        w.open = jw.value("open", true);
+                        if (jw.contains("minSize") && jw["minSize"].is_object()) {
+                            try {
+                                Size s{}; s.width = jw["minSize"].value("width", 0); s.height = jw["minSize"].value("height", 0);
+                                if (s.width > 0 && s.height > 0) w.minSize = s;
+                            } catch (...) {}
+                        }
+                        std::string type = jw.value(std::string("type"), std::string(""));
+                        if (!type.empty()) {
+                            WindowContext ctx{};
+                            auto impl = window_registry_.create(type, ctx);
+                            if (impl) {
+                                // Deserialize state before title sync so window may set its own title; then apply explicit title if provided
+                                if (jw.contains("state")) {
+                                    try { impl->deserialize(jw["state"]); } catch (...) {}
+                                }
+                                if (!w.title.empty()) { impl->setTitle(w.title); }
+                                else { w.title = impl->title(); }
+                                w.impl = std::move(impl);
+                            } else {
+                                gb2d::logging::LogManager::warn("Unknown window type '{}' when loading layout '{}'", type, layoutName);
+                            }
+                        } else {
+                            // Legacy/plain window without impl
+                            if (w.title.empty()) w.title = w.id;
+                        }
+                        windows_.push_back(std::move(w));
+                    } catch (...) {
+                        // Skip malformed window entries
+                    }
+                }
+            }
+            loadedAny = true;
+        } catch (...) {
+            gb2d::logging::LogManager::error("Failed reading JSON layout '{}'", layoutName);
+        }
+    }
+
+    // Fallback: Load legacy windows metadata
+    if (!loadedAny && fs::exists(windowsPath)) {
         auto unescape = [](const std::string& s) {
             std::string out;
             out.reserve(s.size());
@@ -260,32 +399,7 @@ bool WindowManager::loadLayout(const std::string& name) {
                     last_folder_ = unescape(line.substr(12));
                     continue;
                 }
-                if (line.rfind("console_autoscroll=", 0) == 0) {
-                    console_autoscroll_ = (std::stoi(line.substr(19)) != 0);
-                    continue;
-                }
-                if (line.rfind("console_max_lines=", 0) == 0) {
-                    console_max_lines_ = std::max(100, std::stoi(line.substr(18)));
-                    continue;
-                }
-                if (line.rfind("console_buffer_cap=", 0) == 0) {
-                    int v = std::stoi(line.substr(19));
-                    if (v < 1000) v = 1000;
-                    console_buffer_cap_ = (size_t)v;
-                    gb2d::logging::set_log_buffer_capacity(console_buffer_cap_);
-                    continue;
-                }
-                if (line.rfind("console_level_mask=", 0) == 0) {
-                    uint32_t v = 0;
-                    try { v = (uint32_t)std::stoul(line.substr(20)); } catch (...) { v = 0x3F; }
-                    if (v == 0) v = 0x3F;
-                    console_level_mask_ = v;
-                    continue;
-                }
-                if (line.rfind("console_text_filter=", 0) == 0) {
-                    console_text_filter_ = unescape(line.substr(20));
-                    continue;
-                }
+                // Console settings are now owned by ConsoleLogWindow (modular window) and not read here.
                 if (line.rfind("recent=", 0) == 0) {
                     recent_files_.clear();
                     std::string rest = line.substr(7);
@@ -310,7 +424,7 @@ bool WindowManager::loadLayout(const std::string& name) {
                     title = unescape(line.substr(p2 + 7, p3 - (p2 + 7)));
                     openStr = line.substr(p3 + 6);
                     ManagedWindow w{ id, title, openStr == "1" };
-                    windows_.push_back(w);
+                    windows_.push_back(std::move(w));
                 }
             }
             loadedAny = true;
@@ -439,7 +553,33 @@ void WindowManager::renderUI() {
                             addRecentFile(p);
                             addToast(std::string("Opened: ") + p);
                             try { last_folder_ = std::filesystem::path(p).parent_path().string(); } catch (...) {}
-                            openFilePreview(p);
+                            // Route to modular windows based on extension
+                            std::string ext2;
+                            try { ext2 = std::filesystem::path(p).extension().string(); } catch (...) { ext2.clear(); }
+                            for (auto& c : ext2) c = (char)tolower((unsigned char)c);
+                            bool isText2 = CodeEditorWindow::isTextLikeExtension(ext2);
+                            if (isText2) {
+                                ManagedWindow* existing2 = findByTypeId("code-editor");
+                                if (!existing2) {
+                                    std::string id2 = spawnWindowByType("code-editor", std::string("Text Editor"));
+                                    if (!id2.empty()) focus_request_window_id_ = id2;
+                                    existing2 = findByTypeId("code-editor");
+                                }
+                                if (existing2 && existing2->impl) {
+                                    if (auto* ce2 = dynamic_cast<CodeEditorWindow*>(existing2->impl.get())) {
+                                        ce2->openFile(p);
+                                    }
+                                }
+                            } else {
+                                std::string id2 = spawnWindowByType("file-preview", std::string("Preview: ") + std::filesystem::path(p).filename().string());
+                                if (!id2.empty()) {
+                                    ManagedWindow* w2 = nullptr;
+                                    for (auto& mw : windows_) if (mw.id == id2) { w2 = &mw; break; }
+                                    if (w2 && w2->impl) {
+                                        if (auto* pv2 = dynamic_cast<FilePreviewWindow*>(w2->impl.get())) pv2->open(p);
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -451,7 +591,14 @@ void WindowManager::renderUI() {
         }
         if (ImGui::BeginMenu("GameBuilder")) {
             if (ImGui::MenuItem("Text Editor")) {
-                ensureEditorWindow(true);
+                ManagedWindow* existing = findByTypeId("code-editor");
+                if (!existing) {
+                    std::string id = spawnWindowByType("code-editor", std::string("Text Editor"));
+                    if (!id.empty()) focus_request_window_id_ = id;
+                } else {
+                    existing->open = true;
+                    focus_request_window_id_ = existing->id;
+                }
             }
             ImGui::EndMenu();
         }
@@ -460,15 +607,14 @@ void WindowManager::renderUI() {
                 createWindow("Window " + std::to_string(next_id_));
             }
             if (ImGui::MenuItem("Console")) {
-                // Ensure a Console window exists; reopen if closed; request focus
-                ManagedWindow* console = findByTitle("Console");
-                if (!console) {
-                    createWindow("Console");
-                    console = findByTitle("Console");
-                }
-                if (console) {
-                    console->open = true;
-                    focus_request_window_id_ = console->id;
+                // Spawn or focus the modular Console window (registry-driven)
+                ManagedWindow* existing = findByTypeId("console-log");
+                if (!existing) {
+                    std::string id = spawnWindowByType("console-log", std::string("Console"));
+                    if (!id.empty()) focus_request_window_id_ = id;
+                } else {
+                    existing->open = true;
+                    focus_request_window_id_ = existing->id;
                 }
             }
             ImGui::EndMenu();
@@ -492,10 +638,16 @@ void WindowManager::renderUI() {
                 for (auto& p : fs::directory_iterator(base)) {
                     if (!p.is_regular_file()) continue;
                     auto fname = p.path().filename().string();
-                    const std::string suffix = ".wm.txt";
-                    if (fname.size() > suffix.size() && fname.ends_with(suffix)) {
-                        layouts.emplace_back(fname.substr(0, fname.size() - suffix.size()));
-                    }
+                    // Accept both legacy and JSON layout files; dedupe names
+                    auto add_if = [&](const std::string& suffix){
+                        if (fname.size() > suffix.size() && fname.rfind(suffix) == fname.size() - suffix.size()) {
+                            auto baseName = fname.substr(0, fname.size() - suffix.size());
+                            if (std::find(layouts.begin(), layouts.end(), baseName) == layouts.end())
+                                layouts.emplace_back(std::move(baseName));
+                        }
+                    };
+                    add_if(".wm.txt");
+                    add_if(".layout.json");
                 }
             }
             static std::string pendingDelete;
@@ -522,6 +674,7 @@ void WindowManager::renderUI() {
                     try {
                         fs::remove(base / (pendingDelete + ".wm.txt"));
                         fs::remove(base / (pendingDelete + ".imgui.ini"));
+                        fs::remove(base / (pendingDelete + ".layout.json"));
                         addToast("Deleted layout '" + pendingDelete + "'");
                     } catch (...) {}
                     doClose = true;
@@ -544,9 +697,24 @@ void WindowManager::renderUI() {
     // Render each managed window as an ImGui window (dockable)
     for (auto& w : windows_) {
         if (!w.open) continue;
+        // If modular impl exists, keep title in sync
+        if (w.impl) {
+            // Pull title from impl if different
+            std::string implTitle = w.impl->title();
+            if (!implTitle.empty() && implTitle != w.title) w.title = implTitle;
+        }
         std::string label = makeLabel(w);
         bool open = w.open;
         if (ImGui::Begin(label.c_str(), &open)) {
+            // Allow impl to render its content
+            if (w.impl) {
+                WindowContext ctx{};
+                ctx.requestFocus = [this,&w]() { this->focus_request_window_id_ = w.id; };
+                ctx.requestUndock = [this,&w]() { this->undock_requests_.insert(w.id); };
+                ctx.requestClose = [this,&w]() { this->cleanupPreview(w.id); this->closeWindow(w.id); };
+                // TODO: wire services into ctx as they are extracted
+                w.impl->render(ctx);
+            } else {
             ImGui::Text("ID: %s", w.id.c_str());
             if (ImGui::Button("Undock")) {
                 undock_requests_.insert(w.id);
@@ -592,186 +760,12 @@ void WindowManager::renderUI() {
             }
 
             // Sample content per title
-            if (w.title == "Scene") {
+            if (!w.impl && w.title == "Scene") {
                 ImGui::TextUnformatted("Scene view placeholder");
-            } else if (w.title == "Inspector") {
+            } else if (!w.impl && w.title == "Inspector") {
                 ImGui::TextUnformatted("Inspector placeholder");
-            } else if (w.title == "Text Editor") {
-                renderEditorWindow();
-            } else if (w.title == "Console") {
-                // New TextEditor-based console UI
-                initLogEditorIfNeeded();
-
-                // Settings / controls row
-                ImGui::SetNextItemWidth(120);
-                ImGui::InputInt("Max lines", &console_max_lines_);
-                if (console_max_lines_ < 100) console_max_lines_ = 100;
-                ImGui::SameLine();
-                ImGui::SetNextItemWidth(120);
-                static int bufCapTmp2 = 0; bufCapTmp2 = (int)console_buffer_cap_;
-                if (ImGui::InputInt("Buffer cap", &bufCapTmp2)) {
-                    if (bufCapTmp2 < 1000) bufCapTmp2 = 1000;
-                    console_buffer_cap_ = (size_t)bufCapTmp2;
-                    gb2d::logging::set_log_buffer_capacity(console_buffer_cap_);
-                }
-                ImGui::SameLine();
-                ImGui::Checkbox("Autoscroll", &console_autoscroll_);
-                ImGui::SameLine();
-                if (ImGui::Button("Clear")) {
-                    gb2d::logging::clear_log_buffer();
-                    log_editor_.SetText("");
-                    log_last_snapshot_size_ = 0;
-                    log_last_hash_ = 0;
-                }
-                ImGui::SameLine();
-                if (ImGui::Button("Copy")) {
-                    auto txt = log_editor_.GetText();
-                    ImGui::SetClipboardText(txt.c_str());
-                }
-
-                auto lvlBtn2 = [&](const char* label, uint32_t bit){
-                    bool on = (console_level_mask_ & bit) != 0;
-                    if (on) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f,0.6f,0.2f,1.0f));
-                    if (ImGui::SmallButton(label)) {
-                        console_level_mask_ ^= bit;
-                        if ((console_level_mask_ & 0x3F) == 0) console_level_mask_ = 0x3F;
-                    }
-                    if (on) ImGui::PopStyleColor();
-                    ImGui::SameLine();
-                };
-                lvlBtn2("Trace", 1u<<0);
-                lvlBtn2("Debug", 1u<<1);
-                lvlBtn2("Info",  1u<<2);
-                lvlBtn2("Warn",  1u<<3);
-                lvlBtn2("Error", 1u<<4);
-                lvlBtn2("Crit",  1u<<5);
-                ImGui::NewLine();
-
-                ImGui::SetNextItemWidth(300);
-                char filterBuf2[256];
-                std::strncpy(filterBuf2, console_text_filter_.c_str(), sizeof(filterBuf2));
-                filterBuf2[sizeof(filterBuf2)-1] = '\0';
-                if (ImGui::InputText("##filter", filterBuf2, IM_ARRAYSIZE(filterBuf2))) {
-                    console_text_filter_ = filterBuf2;
-                }
-
-                // Search (T2.5): independent of filtering
-                ImGui::SameLine();
-                ImGui::SetNextItemWidth(200);
-                char searchBuf[256];
-                std::strncpy(searchBuf, console_search_query_.c_str(), sizeof(searchBuf));
-                searchBuf[sizeof(searchBuf)-1] = '\0';
-                bool searchEdited = false;
-                if (ImGui::InputTextWithHint("##console_search", "Search", searchBuf, IM_ARRAYSIZE(searchBuf))) {
-                    console_search_query_ = searchBuf;
-                    searchEdited = true;
-                }
-                ImGui::SameLine();
-                ImGui::Checkbox("Aa", &console_search_case_sensitive_); ImGui::SameLine();
-                bool goPrev = ImGui::ArrowButton("##search_prev", ImGuiDir_Left); ImGui::SameLine();
-                bool goNext = ImGui::ArrowButton("##search_next", ImGuiDir_Right); ImGui::SameLine();
-                if (ImGui::Button("Clear Search")) {
-                    console_search_query_.clear();
-                    console_search_matches_.clear();
-                    console_search_current_index_ = 0;
-                }
-
-                // Shortcut: Enter cycles next when search has focus
-                if (ImGui::IsItemFocused() && ImGui::IsKeyPressed(ImGuiKey_Enter)) {
-                    goNext = true;
-                }
-
-                // Recompute matches when query changed, text changed, or case sensitivity toggled
-                if (searchEdited || console_search_last_query_ != console_search_query_ || console_search_last_version_ != log_text_version_ || console_search_last_case_sensitive_ != console_search_case_sensitive_) {
-                    if (searchEdited || console_search_last_query_ != console_search_query_ || console_search_last_version_ != log_text_version_ || console_search_last_case_sensitive_ != console_search_case_sensitive_) {
-                        console_search_matches_.clear();
-                        console_search_current_index_ = 0;
-                        console_search_last_query_ = console_search_query_;
-                        console_search_last_version_ = log_text_version_;
-                        console_search_last_case_sensitive_ = console_search_case_sensitive_;
-                        if (!console_search_query_.empty()) {
-                            auto lines = log_editor_.GetTextLines();
-                            std::string needle = console_search_query_;
-                            if (!console_search_case_sensitive_) {
-                                std::transform(needle.begin(), needle.end(), needle.begin(), [](unsigned char c){ return (char)tolower(c); });
-                            }
-                            for (int li = 0; li < (int)lines.size(); ++li) {
-                                const std::string& L = lines[li];
-                                std::string hay = L;
-                                if (!console_search_case_sensitive_) {
-                                    std::transform(hay.begin(), hay.end(), hay.begin(), [](unsigned char c){ return (char)tolower(c); });
-                                }
-                                size_t pos = hay.find(needle);
-                                while (!needle.empty() && pos != std::string::npos) {
-                                    console_search_matches_.push_back({ li, (int)pos, (int)(pos + needle.size()) });
-                                    pos = hay.find(needle, pos + (needle.size() ? needle.size() : 1));
-                                }
-                            }
-                        }
-                        console_search_selection_dirty_ = true;
-                    }
-                }
-
-                // Navigation
-                if (!console_search_matches_.empty()) {
-                    if (goNext) { console_search_current_index_ = (console_search_current_index_ + 1) % (int)console_search_matches_.size(); console_search_selection_dirty_ = true; }
-                    if (goPrev) { console_search_current_index_ = (console_search_current_index_ - 1 + (int)console_search_matches_.size()) % (int)console_search_matches_.size(); console_search_selection_dirty_ = true; }
-                    ImGui::SameLine();
-                    ImGui::TextDisabled("%d/%d", console_search_current_index_ + 1, (int)console_search_matches_.size());
-                } else if (!console_search_query_.empty()) {
-                    ImGui::SameLine();
-                    ImGui::TextDisabled("0/0");
-                }
-
-                // Apply selection of current match
-                if (console_search_selection_dirty_ && !console_search_matches_.empty()) {
-                    console_search_selection_dirty_ = false;
-                    const auto& m = console_search_matches_[console_search_current_index_];
-                    TextEditor::Coordinates start{ m.line, m.start_col };
-                    TextEditor::Coordinates end{ m.line, m.end_col };
-                    log_editor_.SetSelection(start, end, TextEditor::SelectionMode::Normal);
-                    log_editor_.SetCursorPosition(end);
-                }
-
-                // Rebuild editor contents if needed (lines snapshot + filters changed)
-                rebuildLogEditorIfNeeded();
-
-                // Render read-only log editor
-                log_editor_.Render("##log_editor");
-#ifdef GB2D_LOG_CONSOLE_INSTRUMENT
-                if (ImGui::CollapsingHeader("Log Metrics", ImGuiTreeNodeFlags_DefaultOpen)) {
-                    ImGui::Text("Frames Checked: %llu", (unsigned long long)log_metrics_.total_frames);
-                    ImGui::Text("Full Rebuilds: %llu (%.2f ms avg)", (unsigned long long)log_metrics_.total_full_rebuilds,
-                        log_metrics_.total_full_rebuilds ? log_metrics_.accum_full_rebuild_ms / (double)log_metrics_.total_full_rebuilds : 0.0);
-                    ImGui::Text("Incremental Appends: %llu (%.2f ms avg)", (unsigned long long)log_metrics_.total_incremental_appends,
-                        log_metrics_.total_incremental_appends ? log_metrics_.accum_incremental_ms / (double)log_metrics_.total_incremental_appends : 0.0);
-                    ImGui::Text("No-op Hash Skips: %llu", (unsigned long long)log_metrics_.total_noop_skips);
-                    ImGui::Text("Truncation Fallbacks: %llu", (unsigned long long)log_metrics_.total_truncation_fallbacks);
-                    ImGui::Text("SetText Calls: %llu", (unsigned long long)log_metrics_.total_settext_calls);
-                    ImGui::Text("Last Op: %.4f ms (%s)", log_metrics_.last_op_ms, log_metrics_.last_was_incremental ? "incremental" : "full");
-                }
-#endif
-            } else if (w.title.rfind("Preview:", 0) == 0) {
-                auto itp = previews_.find(w.id);
-                if (itp != previews_.end()) {
-                    Preview& p = itp->second;
-                    ImGui::TextUnformatted(p.path.c_str());
-                    if (p.kind == Preview::Kind::Text) {
-                        ImGui::Separator();
-                        ImGui::BeginChild("text", ImVec2(0,0), false, ImGuiWindowFlags_HorizontalScrollbar);
-                        ImGui::TextUnformatted(p.text.c_str());
-                        ImGui::EndChild();
-                    } else if (p.kind == Preview::Kind::Image && p.loaded && p.texId != 0) {
-                        float availW = ImGui::GetContentRegionAvail().x;
-                        float scale = (float) p.imgWidth > 0 ? availW / (float)p.imgWidth : 1.0f;
-                        ImGui::Image((ImTextureID)(intptr_t)p.texId, ImVec2(p.imgWidth * scale, p.imgHeight * scale));
-                    } else {
-                        ImGui::TextUnformatted("(no preview)");
-                    }
-                } else {
-                    ImGui::TextUnformatted("(preview missing)");
-                }
             }
+            } // end else (non-impl)
         }
         ImGui::End();
         w.open = open;
@@ -810,15 +804,33 @@ void WindowManager::renderUI() {
                 last_folder_ = std::filesystem::path(filePathName).parent_path().string();
             } catch (...) {}
             addRecentFile(filePathName);
-            // Route text-like files into the editor
+            // Route text-like files into the modular Code Editor; else spawn a File Preview window
             std::string ext;
             try { ext = std::filesystem::path(filePathName).extension().string(); } catch (...) { ext.clear(); }
             for (auto& c : ext) c = (char)tolower((unsigned char)c);
-            if (isTextLikeExtension(ext)) {
-                ensureEditorWindow(true);
-                openEditorFile(filePathName);
+            bool isText = CodeEditorWindow::isTextLikeExtension(ext);
+            if (isText) {
+                ManagedWindow* existing = findByTypeId("code-editor");
+                if (!existing) {
+                    std::string id = spawnWindowByType("code-editor", std::string("Text Editor"));
+                    if (!id.empty()) focus_request_window_id_ = id;
+                    existing = findByTypeId("code-editor");
+                }
+                if (existing && existing->impl) {
+                    if (auto* ce = dynamic_cast<CodeEditorWindow*>(existing->impl.get())) {
+                        ce->openFile(filePathName);
+                    }
+                }
             } else {
-                openFilePreview(filePathName);
+                // Spawn a preview window per file
+                std::string id = spawnWindowByType("file-preview", std::string("Preview: ") + std::filesystem::path(filePathName).filename().string());
+                if (!id.empty()) {
+                    ManagedWindow* w = nullptr;
+                    for (auto& mw : windows_) if (mw.id == id) { w = &mw; break; }
+                    if (w && w->impl) {
+                        if (auto* pv = dynamic_cast<FilePreviewWindow*>(w->impl.get())) pv->open(filePathName);
+                    }
+                }
             }
             // Optionally, create a window showing the file name
             // createWindow(std::filesystem::path(filePathName).filename().string());
@@ -830,52 +842,8 @@ void WindowManager::renderUI() {
     ImGui::End();
 }
 
-void WindowManager::openFilePreview(const std::string& path) {
-    std::string ext;
-    try { ext = std::filesystem::path(path).extension().string(); }
-    catch (...) { ext.clear(); }
-    auto toLower = [](std::string s){ for (auto& c : s) c = (char)tolower((unsigned char)c); return s; };
-    ext = toLower(ext);
-
-    ManagedWindow w{};
-    w.id = "win-" + std::to_string(next_id_++);
-    w.title = std::string("Preview: ") + std::filesystem::path(path).filename().string();
-    windows_.push_back(w);
-
-    Preview p{};
-    p.path = path;
-    if (ext == ".txt" || ext == ".md" || ext == ".log" || ext == ".cmake" || ext == ".h" || ext == ".hpp" || ext == ".c" || ext == ".cpp") {
-        p.kind = Preview::Kind::Text;
-        std::ifstream ifs(path);
-        std::ostringstream oss;
-        oss << ifs.rdbuf();
-        p.text = oss.str();
-        p.loaded = true;
-    } else if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" || ext == ".gif") {
-        p.kind = Preview::Kind::Image;
-        Image img = LoadImage(path.c_str());
-        if (img.data) {
-            Texture2D tex = LoadTextureFromImage(img);
-            p.texId = tex.id;
-            p.imgWidth = tex.width;
-            p.imgHeight = tex.height;
-            p.loaded = true;
-            UnloadImage(img);
-        }
-    }
-    previews_.emplace(w.id, std::move(p));
-}
-
 void WindowManager::cleanupPreview(const std::string& windowId) {
-    auto it = previews_.find(windowId);
-    if (it != previews_.end()) {
-        Preview& p = it->second;
-        if (p.kind == Preview::Kind::Image && p.loaded && p.texId != 0) {
-            Texture2D tex; tex.id = p.texId; tex.width = p.imgWidth; tex.height = p.imgHeight; tex.mipmaps = 1; tex.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
-            UnloadTexture(tex);
-        }
-        previews_.erase(it);
-    }
+    (void)windowId; // no-op; textures owned by FilePreviewWindow now
 }
 
 void WindowManager::addRecentFile(const std::string& path, size_t cap) {
@@ -895,7 +863,11 @@ void WindowManager::buildDefaultLayoutIfNeeded() {
     };
     ensureWindow("Scene");
     ensureWindow("Inspector");
-    ensureWindow("Console");
+    // Prefer modular Console window if registry has it; fallback to legacy title-based
+    if (!findByTypeId("console-log")) {
+        std::string id = spawnWindowByType("console-log", std::string("Console"));
+        (void)id;
+    }
 
     // Build dock layout: split root into left (Scene), right (Inspector), bottom (Console)
     if (ImGui::DockBuilderGetNode(dockspace_id_) == nullptr)
@@ -933,515 +905,3 @@ WindowManager::ManagedWindow* WindowManager::findByTitle(const std::string& titl
 }
 
 } // namespace gb2d
-
-// ===== Editor helpers implementation =====
-namespace {
-    inline std::string toLower(std::string s){ for (auto& c : s) c = (char)tolower((unsigned char)c); return s; }
-
-    // Simple 64-bit FNV-1a hash utility for rebuild change detection
-    uint64_t fnv1a64(const void* data, size_t len, uint64_t seed = 1469598103934665603ull) {
-        uint64_t h = seed;
-        const unsigned char* p = (const unsigned char*)data;
-        for (size_t i = 0; i < len; ++i) {
-            h ^= (uint64_t)p[i];
-            h *= 1099511628211ull;
-        }
-        return h;
-    }
-
-    // Custom tokenizer to color only the log level word (inside brackets) with a unique color per level.
-    namespace {
-        bool LogTokenize(const char* in_begin, const char* in_end,
-                         const char*& out_begin, const char*& out_end,
-                         TextEditor::PaletteIndex& paletteIndex) {
-            // Skip whitespace first
-            const char* p = in_begin;
-            while (p < in_end && (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n')) {
-                // Emit each whitespace / newline as default so editor keeps layout
-                out_begin = p;
-                out_end = p + 1;
-                paletteIndex = TextEditor::PaletteIndex::Default;
-                return true;
-            }
-            if (p >= in_end) return false; // nothing
-
-            // Punctuation / brackets remain punctuation color
-            if (std::ispunct((unsigned char)*p) && *p != '_' && *p != '-') {
-                out_begin = p;
-                out_end = p + 1;
-                paletteIndex = TextEditor::PaletteIndex::Punctuation;
-                return true;
-            }
-
-            // Alphanumeric token
-            if (std::isalnum((unsigned char)*p)) {
-                const char* start = p;
-                ++p;
-                while (p < in_end && (std::isalnum((unsigned char)*p) || *p == '_' || *p=='-')) ++p;
-                std::string word(start, p);
-                std::string lower;
-                lower.reserve(word.size());
-                for (char c : word) lower.push_back((char)std::tolower((unsigned char)c));
-                // Only treat a word as a level if it resides in the second bracket pair of the line pattern:
-                // [HH:MM:SS] [level] message
-                bool isLevelPosition = false;
-                // Find start of this line
-                const char* lineStart = start;
-                while (lineStart > in_begin && *(lineStart - 1) != '\n') --lineStart;
-                // Basic quick pattern checks to avoid scanning whole buffer all the time
-                if ((lineStart < start) && *lineStart == '[') {
-                    // find first closing bracket ']'
-                    const char* firstClose = lineStart + 1;
-                    while (firstClose < in_end && *firstClose != ']' && *firstClose != '\n') ++firstClose;
-                    if (firstClose < in_end && *firstClose == ']') {
-                        // expect a space then '['
-                        const char* maybeSpace = firstClose + 1;
-                        if (maybeSpace < in_end && *maybeSpace == ' ') {
-                            const char* secondOpen = maybeSpace + 1;
-                            if (secondOpen < in_end && *secondOpen == '[') {
-                                // find second close
-                                const char* secondClose = secondOpen + 1;
-                                while (secondClose < in_end && *secondClose != ']' && *secondClose != '\n') ++secondClose;
-                                if (secondClose < in_end && *secondClose == ']') {
-                                    // Our token must lie strictly inside [secondOpen+1, secondClose)
-                                    if (start >= secondOpen + 1 && p <= secondClose) {
-                                        isLevelPosition = true;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if (isLevelPosition) {
-                    // Map level -> palette index (we override palette colors later)
-                    if (lower == "trace")      paletteIndex = TextEditor::PaletteIndex::Comment; // dim grey
-                    else if (lower == "debug") paletteIndex = TextEditor::PaletteIndex::Identifier; // cyan/blue
-                    else if (lower == "info")  paletteIndex = TextEditor::PaletteIndex::KnownIdentifier; // green
-                    else if (lower == "warn")  paletteIndex = TextEditor::PaletteIndex::PreprocIdentifier; // yellow/orange
-                    else if (lower == "error") paletteIndex = TextEditor::PaletteIndex::Keyword; // red
-                    else if (lower == "crit" || lower == "critical") paletteIndex = TextEditor::PaletteIndex::Preprocessor; // magenta
-                    else paletteIndex = TextEditor::PaletteIndex::Default; // unexpected word inside level brackets
-                } else {
-                    paletteIndex = TextEditor::PaletteIndex::Default; // normal text (timestamp/message)
-                }
-                out_begin = start;
-                out_end = p;
-                return true;
-            }
-
-            // Fallback single char default
-            out_begin = p;
-            out_end = p + 1;
-            paletteIndex = TextEditor::PaletteIndex::Default;
-            return true;
-        }
-    }
-
-    TextEditor::LanguageDefinition CreateLogLanguageDefinition() {
-        static bool initialized = false;
-        static TextEditor::LanguageDefinition lang;
-        if (!initialized) {
-            lang.mName = "GB2DLog";
-            lang.mKeywords.clear();
-            lang.mTokenRegexStrings.clear();
-            lang.mCommentStart = "";
-            lang.mCommentEnd = "";
-            lang.mSingleLineComment = "";
-            lang.mCaseSensitive = true;
-            lang.mIdentifiers.clear();
-            lang.mPreprocIdentifiers.clear();
-            lang.mAutoIndentation = false;
-            lang.mTokenize = &LogTokenize; // our custom lightweight tokenizer
-            initialized = true;
-        }
-        return lang;
-    }
-}
-
-void gb2d::WindowManager::ensureEditorWindow(bool focus) {
-    if (!editor_.exists) {
-        std::string id = createWindow("Text Editor");
-        editor_.exists = true;
-        editor_.open = true;
-        editor_.id = id;
-        editor_.current = -1;
-    } else {
-        if (ManagedWindow* e = findByTitle("Text Editor")) e->open = true;
-    }
-    if (focus) focus_request_window_id_ = editor_.id;
-}
-
-void gb2d::WindowManager::initLogEditorIfNeeded() {
-    if (log_editor_initialized_) return;
-    log_editor_initialized_ = true;
-    log_editor_.SetReadOnly(true);
-    log_editor_.SetShowWhitespaces(false);
-    // Upstream editor variant may not expose line number toggle; they are off by default in dark palette usage.
-    auto palette = TextEditor::GetDarkPalette();
-    // Re-purpose palette slots for consistent log level colors (ARGB):
-    // TRACE -> Comment (dim gray)
-    palette[(int)TextEditor::PaletteIndex::Comment] = 0xFF5A5A5A;         // dim gray
-    // DEBUG -> Identifier (blue/cyan)
-    palette[(int)TextEditor::PaletteIndex::Identifier] = 0xFF4FC1FF;      // light cyan
-    // INFO  -> KnownIdentifier (green)
-    palette[(int)TextEditor::PaletteIndex::KnownIdentifier] = 0xFF52D273; // green
-    // WARN  -> PreprocIdentifier (yellow/orange)
-    palette[(int)TextEditor::PaletteIndex::PreprocIdentifier] = 0xFFE0C17D; // amber
-    // ERROR -> Keyword (red)
-    palette[(int)TextEditor::PaletteIndex::Keyword] = 0xFFFF5A5A;         // red
-    // CRIT  -> Preprocessor (magenta)
-    palette[(int)TextEditor::PaletteIndex::Preprocessor] = 0xFFE070FF;    // magenta
-    // Neutral punctuation color tweak (optional)
-    palette[(int)TextEditor::PaletteIndex::Punctuation] = 0xFFAAAAAA;     // light gray
-    // Background
-    palette[(int)TextEditor::PaletteIndex::Background] = 0xFF1E1E1E; // dark gray
-    log_editor_.SetPalette(palette);
-    log_editor_.SetLanguageDefinition(CreateLogLanguageDefinition());
-}
-
-void gb2d::WindowManager::rebuildLogEditorIfNeeded() {
-#ifdef GB2D_LOG_CONSOLE_INSTRUMENT
-    using namespace std::chrono;
-    auto frame_start = high_resolution_clock::now();
-    if constexpr (true) { log_metrics_.total_frames++; }
-#endif
-    // Snapshot current log lines (bounded by console_max_lines_)
-    auto lines = gb2d::logging::read_log_lines_snapshot((size_t)console_max_lines_);
-    size_t snapshotSize = lines.size();
-
-    // Compute hash of inputs
-    uint64_t h = 1469598103934665603ull;
-    h = fnv1a64(&snapshotSize, sizeof(snapshotSize), h);
-    h = fnv1a64(&console_level_mask_, sizeof(console_level_mask_), h);
-    h = fnv1a64(console_text_filter_.data(), console_text_filter_.size(), h);
-
-    if (snapshotSize == log_last_snapshot_size_ && h == log_last_hash_) {
-#ifdef GB2D_LOG_CONSOLE_INSTRUMENT
-        log_metrics_.total_noop_skips++;
-        log_metrics_.last_op_ms = 0.0;
-        log_metrics_.last_was_incremental = false;
-#endif
-        return; // nothing changed that affects filtered view
-    }
-    // Determine if user is at (or near) bottom before rebuild for refined autoscroll logic.
-    bool should_autoscroll = false;
-    if (console_autoscroll_) {
-        // We approximate bottom detection: cursor line close to last line OR previously recorded as at bottom.
-        auto totalBefore = log_editor_.GetTotalLines();
-        auto cursor = log_editor_.GetCursorPosition();
-        if (totalBefore == 0) {
-            log_user_was_at_bottom_ = true;
-        } else {
-            log_user_was_at_bottom_ = (cursor.mLine >= totalBefore - 2);
-        }
-        should_autoscroll = log_user_was_at_bottom_;
-    }
-
-    bool filters_simple = console_text_filter_.empty();
-    bool size_non_decreasing = snapshotSize >= log_prev_raw_.size();
-    bool can_incremental = size_non_decreasing && filters_simple && (console_level_mask_ == 0x3F);
-
-    // T2.6: Detect ring truncation / front eviction. We only proceed incremental if previous raw snapshot is a prefix of new snapshot.
-    if (can_incremental && !log_prev_raw_.empty()) {
-        size_t prevCount = log_prev_raw_.size();
-        if (prevCount > 0) {
-            bool prefix_ok = true;
-            if (prevCount <= lines.size()) {
-                // Compare objects (pointer + level + text). Comparing text only suffices.
-                for (size_t i = 0; i < prevCount; ++i) {
-                    const auto& a = log_prev_raw_[i];
-                    const auto& b = lines[i];
-                    if (a.level != b.level || a.text != b.text) { prefix_ok = false; break; }
-                }
-            } else {
-                prefix_ok = false;
-            }
-            if (!prefix_ok) {
-                can_incremental = false; // fallback to full rebuild
-#ifdef GB2D_LOG_CONSOLE_INSTRUMENT
-                log_metrics_.total_truncation_fallbacks++;
-#endif
-            }
-        }
-    }
-    bool did_incremental = false;
-    bool text_changed = false; // track whether editor text was modified this cycle
-
-    // Build filtered concatenated text (full or partial)
-    std::string out;
-    if (!can_incremental) {
-        out.reserve(snapshotSize * 64); // rough heuristic
-    }
-
-    // When incremental: we only process new lines after log_prev_raw_.size()
-    size_t start_index = 0;
-    if (can_incremental) {
-        start_index = log_prev_raw_.size();
-    }
-
-    // If full rebuild, process everything into 'out'. If incremental, gather only new appended portion into 'appendBuf'.
-    std::string appendBuf;
-    if (can_incremental) {
-        appendBuf.reserve((snapshotSize - start_index) * 64);
-    }
-
-    auto processLine = [&](const gb2d::logging::LogLine& ln, std::string& dest){
-        uint32_t bit = 0;
-        switch (ln.level) {
-            case gb2d::logging::Level::trace: bit = 1u<<0; break;
-            case gb2d::logging::Level::debug: bit = 1u<<1; break;
-            case gb2d::logging::Level::info:  bit = 1u<<2; break;
-            case gb2d::logging::Level::warn:  bit = 1u<<3; break;
-            case gb2d::logging::Level::err:   bit = 1u<<4; break;
-            case gb2d::logging::Level::critical: bit = 1u<<5; break;
-            case gb2d::logging::Level::off: default: break;
-        }
-        if ((console_level_mask_ & bit) == 0) return false;
-        if (!console_text_filter_.empty()) {
-            std::string hay = ln.text; // copy to lower
-            std::string needle = console_text_filter_;
-            std::transform(hay.begin(), hay.end(), hay.begin(), [](unsigned char c){ return (char)tolower(c); });
-            std::transform(needle.begin(), needle.end(), needle.begin(), [](unsigned char c){ return (char)tolower(c); });
-            if (hay.find(needle) == std::string::npos) return false;
-        }
-        // Keep original spdlog formatted line: "[HH:MM:SS] [level] message".
-        // This way the level token (lowercase) is isolated for highlighting while brackets stay neutral.
-        dest.append(ln.text);
-        if (!dest.empty() && dest.back() != '\n') dest.push_back('\n');
-        return true;
-    };
-
-    size_t emitted_count = 0;
-    if (can_incremental && start_index < snapshotSize) {
-        // Just process new lines
-        for (size_t i = start_index; i < snapshotSize; ++i) {
-            if (processLine(lines[i], appendBuf)) {
-                ++emitted_count;
-            }
-        }
-        if (!appendBuf.empty()) {
-            // Append directly to cached buffer to avoid copying existing editor contents every time.
-            log_editor_text_cache_.append(appendBuf);
-            log_editor_.SetText(log_editor_text_cache_);
-            did_incremental = true;
-            text_changed = true;
-        } else {
-            // Snapshot grew but no new visible lines (all filtered out). Treat as handled: update raw snapshot & hashes later, skip SetText.
-            did_incremental = true; // indicates we shouldn't do a full rebuild
-        }
-    }
-    if (!did_incremental) {
-        for (const auto& ln : lines) {
-            if (processLine(ln, out)) ++emitted_count;
-        }
-        // Only update editor if content actually changed in size or differs.
-        if (out.size() != log_prev_char_count_ || out != log_editor_text_cache_) {
-            log_editor_text_cache_.assign(out.begin(), out.end());
-            log_editor_.SetText(log_editor_text_cache_);
-            text_changed = true;
-            #ifdef GB2D_LOG_CONSOLE_INSTRUMENT
-            log_metrics_.total_settext_calls++;
-            #endif
-        }
-    }
-    if (text_changed) {
-        ++log_text_version_; // mark content mutation for search system
-    }
-    if (should_autoscroll && text_changed) {
-        auto totalLines = log_editor_.GetTotalLines();
-        if (totalLines > 0) {
-            TextEditor::Coordinates c{ (int)totalLines - 1, 0 };
-            log_editor_.SetCursorPosition(c);
-        }
-    }
-    log_last_snapshot_size_ = snapshotSize;
-    log_last_hash_ = h;
-    if (!did_incremental) {
-        log_prev_raw_ = lines; // store full snapshot for future incremental
-    } else {
-        if (!appendBuf.empty()) {
-            // Only append raw lines if there were any visible or invisible new raw lines processed; we still need entire snapshot.
-            log_prev_raw_.insert(log_prev_raw_.end(), lines.begin() + (long long)start_index, lines.end());
-        } else {
-            // No visible additions; just replace raw snapshot with new one (so removed/rolled lines reflect correctly if ring advanced)
-            log_prev_raw_ = lines;
-        }
-    }
-    if (text_changed) {
-        log_prev_char_count_ = log_editor_text_cache_.size();
-    }
-    log_prev_emitted_count_ += emitted_count; // simple running count (not currently used beyond debug potential)
-
-#ifdef GB2D_LOG_CONSOLE_INSTRUMENT
-    auto frame_end = std::chrono::high_resolution_clock::now();
-    double ms = std::chrono::duration<double, std::milli>(frame_end - frame_start).count();
-    log_metrics_.last_op_ms = ms;
-    if (did_incremental) {
-        log_metrics_.total_incremental_appends++;
-        log_metrics_.accum_incremental_ms += ms;
-        log_metrics_.last_was_incremental = true;
-    } else {
-        log_metrics_.total_full_rebuilds++;
-        log_metrics_.accum_full_rebuild_ms += ms;
-        log_metrics_.last_was_incremental = false;
-    }
-#endif
-}
-
-bool gb2d::WindowManager::isTextLikeExtension(const std::string& ext) {
-    static const char* exts[] = { ".txt", ".md", ".log", ".cmake", ".ini", ".json", ".yaml", ".yml",
-        ".h", ".hpp", ".c", ".cpp", ".cc", ".cxx", ".glsl", ".vert", ".frag", ".hlsl", ".lua", ".sql" };
-    for (auto* e : exts) if (ext == e) return true; return false;
-}
-
-const TextEditor::LanguageDefinition& gb2d::WindowManager::languageForExtension(const std::string& ext, std::string& outName) {
-    std::string e = toLower(ext);
-    if (e == ".h" || e == ".hpp" || e == ".c" || e == ".cpp" || e == ".cc" || e == ".cxx") { outName = "C/C++"; return TextEditor::LanguageDefinition::CPlusPlus(); }
-    if (e == ".glsl" || e == ".vert" || e == ".frag") { outName = "GLSL"; return TextEditor::LanguageDefinition::GLSL(); }
-    if (e == ".hlsl") { outName = "HLSL"; return TextEditor::LanguageDefinition::HLSL(); }
-    if (e == ".c") { outName = "C"; return TextEditor::LanguageDefinition::C(); }
-    if (e == ".sql") { outName = "SQL"; return TextEditor::LanguageDefinition::SQL(); }
-    if (e == ".lua") { outName = "Lua"; return TextEditor::LanguageDefinition::Lua(); }
-    outName = "Plain"; return TextEditor::LanguageDefinition::CPlusPlus();
-}
-
-void gb2d::WindowManager::openEditorFile(const std::string& path) {
-    ensureEditorWindow(true);
-    // If already open, focus it
-    for (int i = 0; i < (int)editor_.tabs.size(); ++i) {
-        if (editor_.tabs[i].path == path) { editor_.current = i; return; }
-    }
-    EditorTab tab;
-    tab.path = path;
-    tab.title = std::filesystem::path(path).filename().string();
-    tab.editor = std::make_unique<TextEditor>();
-    tab.editor->SetShowWhitespaces(false);
-    tab.editor->SetPalette(TextEditor::GetDarkPalette());
-    std::string ext;
-    try { ext = std::filesystem::path(path).extension().string(); } catch (...) { ext.clear(); }
-    tab.editor->SetLanguageDefinition(languageForExtension(ext, tab.langName));
-    // Load content
-    try {
-        std::ifstream ifs(path, std::ios::binary);
-        std::ostringstream oss; oss << ifs.rdbuf();
-        tab.editor->SetText(oss.str());
-        tab.dirty = false;
-    } catch (...) {
-        tab.editor->SetText("");
-        tab.dirty = false;
-    }
-    editor_.tabs.push_back(std::move(tab));
-    editor_.current = (int)editor_.tabs.size() - 1;
-}
-
-bool gb2d::WindowManager::saveEditorTab(int index, bool saveAs) {
-    if (index < 0 || index >= (int)editor_.tabs.size()) return false;
-    auto& t = editor_.tabs[index];
-    std::string savePath = t.path;
-    if (saveAs || savePath.empty()) {
-        IGFD::FileDialogConfig cfg; cfg.path = last_folder_.empty() ? std::string(".") : last_folder_;
-        ImGuiFileDialog::Instance()->OpenDialog("EditorSaveAsDlg", "Save File As", ".*", cfg);
-        return false;
-    }
-    try {
-        std::ofstream ofs(savePath, std::ios::binary | std::ios::trunc);
-        auto content = t.editor->GetText();
-        ofs.write(content.data(), (std::streamsize)content.size());
-        t.dirty = false;
-        addToast("Saved: " + savePath);
-        addRecentFile(savePath);
-        return true;
-    } catch (...) {
-        addToast("Failed to save: " + savePath);
-        return false;
-    }
-}
-
-void gb2d::WindowManager::renderEditorWindow() {
-    // Editor menu bar
-    if (ImGui::BeginMenuBar()) {
-        if (ImGui::BeginMenu("File")) {
-            if (ImGui::MenuItem("New")) {
-                EditorTab tab; tab.title = "Untitled"; tab.editor = std::make_unique<TextEditor>();
-                tab.editor->SetPalette(TextEditor::GetDarkPalette()); tab.editor->SetShowWhitespaces(false);
-                tab.editor->SetLanguageDefinition(TextEditor::LanguageDefinition::CPlusPlus());
-                tab.editor->SetText(""); tab.dirty = false;
-                editor_.tabs.push_back(std::move(tab)); editor_.current = (int)editor_.tabs.size() - 1;
-            }
-            if (ImGui::MenuItem("Open...")) {
-                IGFD::FileDialogConfig cfg; cfg.path = last_folder_.empty() ? std::string(".") : last_folder_;
-                ImGuiFileDialog::Instance()->OpenDialog("EditorOpenDlg", "Open File", ".*", cfg);
-            }
-            bool canSave = editor_.current >= 0 && editor_.current < (int)editor_.tabs.size();
-            if (!canSave) ImGui::BeginDisabled();
-            if (ImGui::MenuItem("Save")) { saveEditorTab(editor_.current, false); }
-            if (ImGui::MenuItem("Save As...")) { saveEditorTab(editor_.current, true); }
-            if (!canSave) ImGui::EndDisabled();
-            ImGui::EndMenu();
-        }
-        if (ImGui::BeginMenu("Theme")) {
-            bool canApply = editor_.current >= 0 && editor_.current < (int)editor_.tabs.size();
-            if (!canApply) ImGui::BeginDisabled();
-            if (ImGui::MenuItem("Dark") && canApply) editor_.tabs[editor_.current].editor->SetPalette(TextEditor::GetDarkPalette());
-            if (ImGui::MenuItem("Light") && canApply) editor_.tabs[editor_.current].editor->SetPalette(TextEditor::GetLightPalette());
-            if (ImGui::MenuItem("Retro Blue") && canApply) editor_.tabs[editor_.current].editor->SetPalette(TextEditor::GetRetroBluePalette());
-            if (!canApply) ImGui::EndDisabled();
-            ImGui::EndMenu();
-        }
-        ImGui::EndMenuBar();
-    }
-
-    // Tabs body
-    if (ImGui::BeginTabBar("EditorTabs", ImGuiTabBarFlags_Reorderable | ImGuiTabBarFlags_AutoSelectNewTabs)) {
-        for (int i = 0; i < (int)editor_.tabs.size(); ++i) {
-            auto& t = editor_.tabs[i];
-            std::string label = t.title; if (t.dirty) label += " *";
-            if (ImGui::BeginTabItem(label.c_str(), nullptr)) {
-                editor_.current = i;
-                if (t.editor->IsTextChanged()) t.dirty = true;
-                ImGui::TextUnformatted(t.path.empty() ? "(unsaved)" : t.path.c_str());
-                if (!t.langName.empty()) { ImGui::SameLine(); ImGui::TextDisabled("[%s]", t.langName.c_str()); }
-                t.editor->Render("##text");
-                ImGui::EndTabItem();
-            }
-        }
-        ImGui::EndTabBar();
-    }
-
-    // Editor Open dialog results
-    if (ImGuiFileDialog::Instance()->Display("EditorOpenDlg")) {
-        if (ImGuiFileDialog::Instance()->IsOk()) {
-            auto path = ImGuiFileDialog::Instance()->GetFilePathName();
-            addRecentFile(path);
-            try { last_folder_ = std::filesystem::path(path).parent_path().string(); } catch (...) {}
-            openEditorFile(path);
-        }
-        ImGuiFileDialog::Instance()->Close();
-    }
-
-    // Editor Save As dialog results
-    if (ImGuiFileDialog::Instance()->Display("EditorSaveAsDlg")) {
-        if (ImGuiFileDialog::Instance()->IsOk()) {
-            auto savePath = ImGuiFileDialog::Instance()->GetFilePathName();
-            if (editor_.current >= 0 && editor_.current < (int)editor_.tabs.size()) {
-                auto& t = editor_.tabs[editor_.current];
-                try {
-                    std::ofstream ofs(savePath, std::ios::binary | std::ios::trunc);
-                    auto content = t.editor->GetText();
-                    ofs.write(content.data(), (std::streamsize)content.size());
-                    t.dirty = false;
-                    t.path = savePath;
-                    t.title = std::filesystem::path(savePath).filename().string();
-                    std::string ext; try { ext = std::filesystem::path(savePath).extension().string(); } catch (...) { ext.clear(); }
-                    t.editor->SetLanguageDefinition(languageForExtension(ext, t.langName));
-                    addToast("Saved: " + savePath);
-                    addRecentFile(savePath);
-                } catch (...) {
-                    addToast("Failed to save: " + savePath);
-                }
-            }
-        }
-        ImGuiFileDialog::Instance()->Close();
-    }
-}
