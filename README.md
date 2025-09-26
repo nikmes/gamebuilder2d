@@ -28,51 +28,54 @@ cd gamebuilder2d
 
 ## Build on Windows (VS 2022)
 
-Two options are available; both produce the same app with rlImGui enabled.
-
-1) Visual Studio generator (explicit folder)
-```powershell
-cmake -S . -B build-vs-2022-x64-rlimgui -G "Visual Studio 17 2022" -A x64
-cmake --build build-vs-2022-x64-rlimgui --config Debug --parallel
-
-# Run
-./build-vs-2022-x64-rlimgui/GameBuilder2d/Debug/GameBuilder2d.exe
-```
-
-2) CMake preset (one-liners)
+Using CMake preset (recommended):
 ```powershell
 cmake --preset windows-vs2022-x64-debug
-cmake --build --preset windows-vs2022-x64-debug
+cmake --build --preset windows-vs2022-x64-debug --config Debug
 
 # Run
-./build-vs-2022-x64-rlimgui/GameBuilder2d/Debug/GameBuilder2d.exe
+./build-vs-2022-x64-debug/GameBuilder2d/Debug/GameBuilder2d.exe
 ```
 
 Notes:
-- MSVC builds may use parallel compilation; we set `/FS` to avoid PDB contention.
+- MSVC builds may use parallel compilation; if you hit PDB contention, add `/FS` or reduce parallelism.
 - All dependencies are fetched at configure time via CMake FetchContent.
+- Presets generate a single configuration (Debug or Release) for Visual Studio to speed up configure.
 
 ## Build on WSL/Linux
 
-Using Unix Makefiles (default tasks use this):
-```powershell
-wsl.exe -e bash -lc "cd /mnt/c/Users/<your-user>/source/repos/GameBuilder2d; cmake -S . -B build-linux -G 'Unix Makefiles' -DCMAKE_BUILD_TYPE=Debug"
-wsl.exe -e bash -lc "cd /mnt/c/Users/<your-user>/source/repos/GameBuilder2d; cmake --build build-linux -j"
+Using CMake Presets (recommended):
 
-# Run
-wsl.exe -e bash -lc "cd /mnt/c/Users/<your-user>/source/repos/GameBuilder2d/build-linux/GameBuilder2d; ./GameBuilder2d"
+From Windows PowerShell (invoking WSL):
+```powershell
+wsl.exe -e bash -lc "cd /mnt/c/Users/<your-user>/source/repos/GameBuilder2d; cmake --preset wsl-debug"
+wsl.exe -e bash -lc "cd /mnt/c/Users/<your-user>/source/repos/GameBuilder2d; cmake --build --preset wsl-debug -j"
+
+# Run (Debug)
+wsl.exe -e bash -lc "cd /mnt/c/Users/<your-user>/source/repos/GameBuilder2d/build-linux-debug/GameBuilder2d; ./GameBuilder2d"
 ```
 
-Or with Ninja (optional):
+From a WSL shell directly:
 ```bash
-sudo apt install -y ninja-build
-cmake --preset linux-debug
-cmake --build --preset linux-debug
+cmake --preset wsl-debug
+cmake --build --preset wsl-debug -j
+
+# Run (Debug)
+./build-linux-debug/GameBuilder2d/GameBuilder2d
+```
+
+Release variant:
+```bash
+cmake --preset wsl-release
+cmake --build --preset wsl-release -j
+
+# Run (Release)
+./build-linux-release/GameBuilder2d/GameBuilder2d
 ```
 
 ## VS Code Tasks & Debug
 
-- Tasks: see `.vscode/tasks.json` for WSL Configure/Build/Run tasks.
+- Tasks: see `.vscode/tasks.json` for WSL Configure/Build/Run tasks. Tasks now use the `wsl-debug` and `wsl-release` presets.
 - Debugging (WSL): a gdb-based launch configuration is recommended (requires `gdb` in WSL).
 
 ## VS Code: CMake Tools
@@ -103,25 +106,28 @@ Alternative: Debug the selected CMake target
 - `CMakeLists.txt` (root): project, MSVC config, subdirectory include
 - `GameBuilder2d/CMakeLists.txt`: app target, FetchContent for `raylib`, `imgui`, `rlImGui`
 - `GameBuilder2d/GameBuilder2d.cpp`: rlImGui demo window loop
-- `CMakePresets.json`: presets for Windows (VS 2022) and Linux
+- `CMakePresets.json`: presets for Windows (VS 2022) and WSL (Unix Makefiles)
 - `.vscode/tasks.json`: WSL tasks for configure/build/run
 
 ## Target
 - `GameBuilder2d`: Raylib + ImGui prototype app.
 
 ### Run (WSL/Linux)
-After building with Unix Makefiles:
+After building with the debug preset:
 
 ```powershell
-wsl.exe -e bash -lc "cd /mnt/c/Users/<your-user>/source/repos/GameBuilder2d/build-linux/GameBuilder2d; ./GameBuilder2d"
+wsl.exe -e bash -lc "cd /mnt/c/Users/<your-user>/source/repos/GameBuilder2d/build-linux-debug/GameBuilder2d; ./GameBuilder2d"
 ```
 
 ## Dependency notes
 
 - raylib: built as a static lib; GLFW and platform specifics are handled automatically.
-- rlImGui: brought in via `FetchContent_MakeAvailable`; we alias/export a stable `rlImGui` target.
+- rlImGui: fetched with CMake FetchContent and built locally as a small static lib target `rlImGui`.
 - Dear ImGui: sources are fetched and compiled into a local static lib.
-- Logging: none by default. The app currently avoids external logging dependencies; add your preferred logger if needed.
+- Logging: spdlog-based logging is included (`spdlog::spdlog`).
+- GLFW extras disabled: `GLFW_BUILD_DOCS=OFF`, `GLFW_BUILD_TESTS=OFF`, `GLFW_BUILD_EXAMPLES=OFF`, and `GLFW_INSTALL=OFF` are set before fetching raylib to slim dependency builds.
+- raylib extras disabled: `BUILD_EXAMPLES=OFF`, `BUILD_GAMES=OFF`, `BUILD_TESTING=OFF` (and `RAYLIB_BUILD_*` equivalents) are forced OFF so we only build the library.
+- We use shallow clones and avoid configuring unnecessary subprojects to speed up first-time configure.
 
 ## Troubleshooting
 
@@ -132,6 +138,11 @@ wsl.exe -e bash -lc "cd /mnt/c/Users/<your-user>/source/repos/GameBuilder2d/buil
 	- For WSL1, run a local X server and export `DISPLAY` appropriately.
 - Fetch/clone failures
 	- Verify Internet access and that `git` is installed on both Windows and WSL.
+- Preset changes not taking effect or slow configure
+	- Delete stale build folders after changing presets/options, then re-configure:
+		```powershell
+		Remove-Item -Recurse -Force .\build-vs-2022-x64-debug, .\build-vs-2022-x64-release -ErrorAction SilentlyContinue
+		```
 
 ## Presets overview
 
@@ -141,6 +152,8 @@ cmake --list-presets
 ```
 
 Key presets:
-- `windows-vs2022-x64-debug`: Visual Studio 2022 x64, binary dir `build-vs-2022-x64-rlimgui`
-- `linux-debug`: Ninja-based Linux Debug (requires `ninja-build`)
+- `windows-vs2022-x64-debug`: Visual Studio 2022 x64, binary dir `build-vs-2022-x64-debug`
+- `windows-vs2022-x64-release`: Visual Studio 2022 x64, binary dir `build-vs-2022-x64-release`
+- `wsl-debug`: Unix Makefiles (Debug), binary dir `build-linux-debug`
+- `wsl-release`: Unix Makefiles (Release), binary dir `build-linux-release`
 

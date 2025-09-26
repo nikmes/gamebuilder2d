@@ -38,13 +38,40 @@ target_compile_options(GameBuilder2d PRIVATE
 
 include(FetchContent)
 
+# Speed up dependency fetch & configure:
+#  - Shallow clones (no full git history)
+#  - Disable building examples/tests/benchmarks for third-party libs
+#  These reduce first-time configure substantially, especially raylib & spdlog.
+
+# raylib options
+# Prefer turning off all optional builds (examples/games/tests) to reduce configure/build time
+set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(BUILD_GAMES OFF CACHE BOOL "" FORCE)
+set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+# Some raylib forks/cmake files also check namespaced options; set them too just in case
+set(RAYLIB_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(RAYLIB_BUILD_GAMES OFF CACHE BOOL "" FORCE)
+set(RAYLIB_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+
+# Ensure GLFW (pulled by raylib) does not build extras
+set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
+
+# spdlog options (avoid downloading fmt tests/examples inside spdlog build)
+set(SPDLOG_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(SPDLOG_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(SPDLOG_BUILD_BENCH OFF CACHE BOOL "" FORCE)
+
 # Fetch raylib
 FetchContent_Declare(
   raylib
   GIT_REPOSITORY https://github.com/raysan5/raylib.git
   GIT_TAG 5.5
+  GIT_SHALLOW TRUE
+  GIT_PROGRESS TRUE
 )
-set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(raylib)
 
 # Fetch imgui sources and build as a static library
@@ -52,24 +79,45 @@ FetchContent_Declare(
   imgui
   GIT_REPOSITORY https://github.com/ocornut/imgui.git
   GIT_TAG docking
+  GIT_SHALLOW TRUE
+  GIT_PROGRESS TRUE
 )
-FetchContent_MakeAvailable(imgui)
-FetchContent_GetProperties(imgui)
+# Use Populate instead of MakeAvailable to avoid configuring imgui as a separate CMake project
+if (POLICY CMP0169)
+  cmake_policy(PUSH)
+  cmake_policy(SET CMP0169 OLD)
+endif()
+FetchContent_Populate(imgui)
+if (POLICY CMP0169)
+  cmake_policy(POP)
+endif()
 add_library(imgui STATIC
   ${imgui_SOURCE_DIR}/imgui.cpp
   ${imgui_SOURCE_DIR}/imgui_draw.cpp
   ${imgui_SOURCE_DIR}/imgui_tables.cpp
   ${imgui_SOURCE_DIR}/imgui_widgets.cpp
-  ${imgui_SOURCE_DIR}/imgui_demo.cpp
 )
+option(GB2D_WITH_IMGUI_DEMO "Include Dear ImGui demo & debug windows (omitted in Release automatically)" ON)
+# Only add demo source for non-Release builds when option is ON. This avoids compiling a large translation unit in Release and reduces binary size.
+if (GB2D_WITH_IMGUI_DEMO)
+  target_sources(imgui PRIVATE
+    $<$<NOT:$<OR:$<CONFIG:Release>,$<CONFIG:MinSizeRel>>>:${imgui_SOURCE_DIR}/imgui_demo.cpp>
+  )
+endif()
 target_include_directories(imgui PUBLIC ${imgui_SOURCE_DIR})
 target_compile_definitions(imgui PUBLIC IMGUI_DEFINE_MATH_OPERATORS)
+# Strip demo & debug tools in optimized configs (even if source added conditionally above, these disable runtime exposure)
+target_compile_definitions(imgui PUBLIC
+  $<$<OR:$<CONFIG:Release>,$<CONFIG:MinSizeRel>>:IMGUI_DISABLE_DEMO_WINDOWS IMGUI_DISABLE_DEBUG_TOOLS>
+)
 
 # JSON library (nlohmann/json)
 FetchContent_Declare(
   nlohmann_json
   GIT_REPOSITORY https://github.com/nlohmann/json.git
   GIT_TAG v3.11.3
+  GIT_SHALLOW TRUE
+  GIT_PROGRESS TRUE
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
@@ -78,6 +126,8 @@ FetchContent_Declare(
   spdlog
   GIT_REPOSITORY https://github.com/gabime/spdlog.git
   GIT_TAG v1.12.0
+  GIT_SHALLOW TRUE
+  GIT_PROGRESS TRUE
 )
 FetchContent_MakeAvailable(spdlog)
 
@@ -114,6 +164,8 @@ FetchContent_Declare(
   imguifiledialog
   GIT_REPOSITORY https://github.com/aiekick/ImGuiFileDialog.git
   GIT_TAG master
+  GIT_SHALLOW TRUE
+  GIT_PROGRESS TRUE
 )
 if (POLICY CMP0169)
   cmake_policy(PUSH)
@@ -134,6 +186,8 @@ FetchContent_Declare(
   imguicolortextedit
   GIT_REPOSITORY https://github.com/BalazsJako/ImGuiColorTextEdit.git
   GIT_TAG master
+  GIT_SHALLOW TRUE
+  GIT_PROGRESS TRUE
 )
 if (POLICY CMP0169)
   cmake_policy(PUSH)
@@ -161,28 +215,29 @@ FetchContent_Declare(
   rlimgui
   GIT_REPOSITORY https://github.com/raylib-extras/rlImGui.git
   GIT_TAG main
+  GIT_SHALLOW TRUE
+  GIT_PROGRESS TRUE
 )
-FetchContent_MakeAvailable(rlimgui)
-FetchContent_GetProperties(rlimgui)
-if (rlimgui_SOURCE_DIR)
-  target_include_directories(GameBuilder2d PRIVATE ${rlimgui_SOURCE_DIR})
+# Avoid configuring rlImGui as a subproject; just populate sources and build our own target
+if (POLICY CMP0169)
+  cmake_policy(PUSH)
+  cmake_policy(SET CMP0169 OLD)
 endif()
+FetchContent_Populate(rlimgui)
+if (POLICY CMP0169)
+  cmake_policy(POP)
+endif()
+target_include_directories(GameBuilder2d PRIVATE ${rlimgui_SOURCE_DIR})
 
-# Ensure a consistent target name `rlImGui` exists for linking
-if (TARGET rlimgui AND NOT TARGET rlImGui)
-  add_library(rlImGui ALIAS rlimgui)
-endif()
-
-if (NOT TARGET rlimgui AND NOT TARGET rlImGui)
-  add_library(rlImGui STATIC
-    ${rlimgui_SOURCE_DIR}/rlImGui.cpp
-    ${rlimgui_SOURCE_DIR}/rlImGui.h
-    ${rlimgui_SOURCE_DIR}/imgui_impl_raylib.h
-  )
-  target_include_directories(rlImGui PUBLIC ${rlimgui_SOURCE_DIR})
-  target_compile_definitions(rlImGui PUBLIC IMGUI_DEFINE_MATH_OPERATORS)
-  target_link_libraries(rlImGui PUBLIC raylib imgui)
-endif()
+# Provide a consistent target `rlImGui`
+add_library(rlImGui STATIC
+  ${rlimgui_SOURCE_DIR}/rlImGui.cpp
+  ${rlimgui_SOURCE_DIR}/rlImGui.h
+  ${rlimgui_SOURCE_DIR}/imgui_impl_raylib.h
+)
+target_include_directories(rlImGui PUBLIC ${rlimgui_SOURCE_DIR})
+target_compile_definitions(rlImGui PUBLIC IMGUI_DEFINE_MATH_OPERATORS)
+target_link_libraries(rlImGui PUBLIC raylib imgui)
 
 # Window library depends on ImGui, file dialog, and raylib
 target_link_libraries(gb2d_window PUBLIC imgui imguifiledialog raylib gb2d_logging imguicolortextedit)

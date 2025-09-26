@@ -949,29 +949,110 @@ namespace {
         return h;
     }
 
+    // Custom tokenizer to color only the log level word (inside brackets) with a unique color per level.
+    namespace {
+        bool LogTokenize(const char* in_begin, const char* in_end,
+                         const char*& out_begin, const char*& out_end,
+                         TextEditor::PaletteIndex& paletteIndex) {
+            // Skip whitespace first
+            const char* p = in_begin;
+            while (p < in_end && (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n')) {
+                // Emit each whitespace / newline as default so editor keeps layout
+                out_begin = p;
+                out_end = p + 1;
+                paletteIndex = TextEditor::PaletteIndex::Default;
+                return true;
+            }
+            if (p >= in_end) return false; // nothing
+
+            // Punctuation / brackets remain punctuation color
+            if (std::ispunct((unsigned char)*p) && *p != '_' && *p != '-') {
+                out_begin = p;
+                out_end = p + 1;
+                paletteIndex = TextEditor::PaletteIndex::Punctuation;
+                return true;
+            }
+
+            // Alphanumeric token
+            if (std::isalnum((unsigned char)*p)) {
+                const char* start = p;
+                ++p;
+                while (p < in_end && (std::isalnum((unsigned char)*p) || *p == '_' || *p=='-')) ++p;
+                std::string word(start, p);
+                std::string lower;
+                lower.reserve(word.size());
+                for (char c : word) lower.push_back((char)std::tolower((unsigned char)c));
+                // Only treat a word as a level if it resides in the second bracket pair of the line pattern:
+                // [HH:MM:SS] [level] message
+                bool isLevelPosition = false;
+                // Find start of this line
+                const char* lineStart = start;
+                while (lineStart > in_begin && *(lineStart - 1) != '\n') --lineStart;
+                // Basic quick pattern checks to avoid scanning whole buffer all the time
+                if ((lineStart < start) && *lineStart == '[') {
+                    // find first closing bracket ']'
+                    const char* firstClose = lineStart + 1;
+                    while (firstClose < in_end && *firstClose != ']' && *firstClose != '\n') ++firstClose;
+                    if (firstClose < in_end && *firstClose == ']') {
+                        // expect a space then '['
+                        const char* maybeSpace = firstClose + 1;
+                        if (maybeSpace < in_end && *maybeSpace == ' ') {
+                            const char* secondOpen = maybeSpace + 1;
+                            if (secondOpen < in_end && *secondOpen == '[') {
+                                // find second close
+                                const char* secondClose = secondOpen + 1;
+                                while (secondClose < in_end && *secondClose != ']' && *secondClose != '\n') ++secondClose;
+                                if (secondClose < in_end && *secondClose == ']') {
+                                    // Our token must lie strictly inside [secondOpen+1, secondClose)
+                                    if (start >= secondOpen + 1 && p <= secondClose) {
+                                        isLevelPosition = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (isLevelPosition) {
+                    // Map level -> palette index (we override palette colors later)
+                    if (lower == "trace")      paletteIndex = TextEditor::PaletteIndex::Comment; // dim grey
+                    else if (lower == "debug") paletteIndex = TextEditor::PaletteIndex::Identifier; // cyan/blue
+                    else if (lower == "info")  paletteIndex = TextEditor::PaletteIndex::KnownIdentifier; // green
+                    else if (lower == "warn")  paletteIndex = TextEditor::PaletteIndex::PreprocIdentifier; // yellow/orange
+                    else if (lower == "error") paletteIndex = TextEditor::PaletteIndex::Keyword; // red
+                    else if (lower == "crit" || lower == "critical") paletteIndex = TextEditor::PaletteIndex::Preprocessor; // magenta
+                    else paletteIndex = TextEditor::PaletteIndex::Default; // unexpected word inside level brackets
+                } else {
+                    paletteIndex = TextEditor::PaletteIndex::Default; // normal text (timestamp/message)
+                }
+                out_begin = start;
+                out_end = p;
+                return true;
+            }
+
+            // Fallback single char default
+            out_begin = p;
+            out_end = p + 1;
+            paletteIndex = TextEditor::PaletteIndex::Default;
+            return true;
+        }
+    }
+
     TextEditor::LanguageDefinition CreateLogLanguageDefinition() {
-        // We piggy-back on identifiers for level highlighting.
         static bool initialized = false;
         static TextEditor::LanguageDefinition lang;
         if (!initialized) {
             lang.mName = "GB2DLog";
             lang.mKeywords.clear();
             lang.mTokenRegexStrings.clear();
-            lang.mCommentStart = ""; // no block comments
+            lang.mCommentStart = "";
             lang.mCommentEnd = "";
             lang.mSingleLineComment = "";
             lang.mCaseSensitive = true;
-            // Map log level tags as known identifiers to enable color override via palette indices.
-            lang.mIdentifiers["TRACE"].mDeclaration = "Trace level";
-            lang.mIdentifiers["DEBUG"].mDeclaration = "Debug level";
-            lang.mIdentifiers["INFO"].mDeclaration  = "Info level";
-            lang.mIdentifiers["WARN"].mDeclaration  = "Warn level";
-            lang.mIdentifiers["ERROR"].mDeclaration = "Error level";
-            lang.mIdentifiers["CRIT"].mDeclaration  = "Critical level";
-            lang.mIdentifiers["TS"].mDeclaration    = "Timestamp"; // synthetic token we inject for dim styling
-            // Timestamps: we won't regex highlight strongly; they'll remain Default/dim manually via palette tweak later.
+            lang.mIdentifiers.clear();
+            lang.mPreprocIdentifiers.clear();
             lang.mAutoIndentation = false;
-            lang.mTokenize = nullptr; // rely on default simple tokenization
+            lang.mTokenize = &LogTokenize; // our custom lightweight tokenizer
             initialized = true;
         }
         return lang;
@@ -998,17 +1079,22 @@ void gb2d::WindowManager::initLogEditorIfNeeded() {
     log_editor_.SetShowWhitespaces(false);
     // Upstream editor variant may not expose line number toggle; they are off by default in dark palette usage.
     auto palette = TextEditor::GetDarkPalette();
-    // Adjust palette entries for our log levels (KnownIdentifier / PreprocIdentifier / Identifier / Keyword reuse)
-    // We'll treat:
-    //  TRACE -> Comment color variant (dim)
-    //  DEBUG -> Identifier
-    //  INFO  -> Default
-    //  WARN  -> Preprocessor (yellowish)
-    //  ERROR -> KnownIdentifier (reddish)
-    //  CRIT  -> Keyword (bright red)
-    //  TS    -> Use Comment color (dim)
-    // Palette indices are fixed in upstream enum; we rely on existing semantics.
-    // Optionally darken background slightly
+    // Re-purpose palette slots for consistent log level colors (ARGB):
+    // TRACE -> Comment (dim gray)
+    palette[(int)TextEditor::PaletteIndex::Comment] = 0xFF5A5A5A;         // dim gray
+    // DEBUG -> Identifier (blue/cyan)
+    palette[(int)TextEditor::PaletteIndex::Identifier] = 0xFF4FC1FF;      // light cyan
+    // INFO  -> KnownIdentifier (green)
+    palette[(int)TextEditor::PaletteIndex::KnownIdentifier] = 0xFF52D273; // green
+    // WARN  -> PreprocIdentifier (yellow/orange)
+    palette[(int)TextEditor::PaletteIndex::PreprocIdentifier] = 0xFFE0C17D; // amber
+    // ERROR -> Keyword (red)
+    palette[(int)TextEditor::PaletteIndex::Keyword] = 0xFFFF5A5A;         // red
+    // CRIT  -> Preprocessor (magenta)
+    palette[(int)TextEditor::PaletteIndex::Preprocessor] = 0xFFE070FF;    // magenta
+    // Neutral punctuation color tweak (optional)
+    palette[(int)TextEditor::PaletteIndex::Punctuation] = 0xFFAAAAAA;     // light gray
+    // Background
     palette[(int)TextEditor::PaletteIndex::Background] = 0xFF1E1E1E; // dark gray
     log_editor_.SetPalette(palette);
     log_editor_.SetLanguageDefinition(CreateLogLanguageDefinition());
@@ -1113,45 +1199,15 @@ void gb2d::WindowManager::rebuildLogEditorIfNeeded() {
         }
         if ((console_level_mask_ & bit) == 0) return false;
         if (!console_text_filter_.empty()) {
-            auto hay = ln.text;
-            auto needle = console_text_filter_;
+            std::string hay = ln.text; // copy to lower
+            std::string needle = console_text_filter_;
             std::transform(hay.begin(), hay.end(), hay.begin(), [](unsigned char c){ return (char)tolower(c); });
             std::transform(needle.begin(), needle.end(), needle.begin(), [](unsigned char c){ return (char)tolower(c); });
             if (hay.find(needle) == std::string::npos) return false;
         }
-        // Expected log line pattern: e.message includes formatted text with timestamp/level pattern "[HH:MM:SS] [LEVEL] msg" (per LogManager config).
-        // For consistent tokenization & highlighting, we'll insert a synthetic TS token for timestamp if pattern matches.
-        // We also prepend the level label (again) if it's absent at line start for safety.
-        std::string_view raw = ln.text;
-        bool has_ts = raw.size() > 10 && raw[0] == '[' && raw[9] == ']';
-        if (has_ts) {
-            // Extract timestamp portion
-            std::string_view ts = raw.substr(0, 10); // [HH:MM:SS]
-            dest.append("TS "); // synthetic token to color timestamp via identifier (mapped to dim color)
-            dest.append(ts);
-            dest.push_back(' ');
-            raw.remove_prefix(10);
-            // Skip an optional space after timestamp
-            if (!raw.empty() && raw[0] == ' ') raw.remove_prefix(1);
-        }
-        // Ensure level token present before the rest for highlighting; detect typical [LEVEL] form.
-        bool has_level_bracket = raw.size() > 2 && raw[0] == '[';
-        if (has_level_bracket) {
-            // Copy up to first space after closing bracket
-            size_t close = raw.find(']');
-            if (close != std::string::npos) {
-                std::string levelToken(raw.substr(1, close - 1));
-                dest.append(levelToken);
-                dest.push_back(' ');
-                raw.remove_prefix(close + 1);
-                if (!raw.empty() && raw[0] == ' ') raw.remove_prefix(1);
-            }
-        } else {
-            // Fallback: append our own level token
-            dest.append(gb2d::logging::level_to_label(ln.level));
-            dest.push_back(' ');
-        }
-        dest.append(raw);
+        // Keep original spdlog formatted line: "[HH:MM:SS] [level] message".
+        // This way the level token (lowercase) is isolated for highlighting while brackets stay neutral.
+        dest.append(ln.text);
         if (!dest.empty() && dest.back() != '\n') dest.push_back('\n');
         return true;
     };

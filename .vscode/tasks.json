@@ -12,14 +12,9 @@
         "-e",
         "bash",
         "-lc",
-        "cmake -S . -B build-linux -DCMAKE_BUILD_TYPE=Debug"
+        "cmake --preset wsl-debug"
       ],
       "group": "build",
-      "options": {
-        "env": {
-          "CMAKE_GENERATOR": "Unix Makefiles"
-        }
-      },
       "problemMatcher": []
     },
     {
@@ -32,7 +27,7 @@
         "-e",
         "bash",
         "-lc",
-        "cmake --build build-linux"
+        "cmake --build --preset wsl-debug"
       ],
       "group": { "kind": "build", "isDefault": true },
       "problemMatcher": ["$gcc"],
@@ -44,7 +39,7 @@
       "command": "wsl.exe",
       "args": [
         "--cd",
-        "${workspaceFolder}/build-linux/GameBuilder2d",
+        "${workspaceFolder}/build-linux-debug/GameBuilder2d",
         "-e",
         "bash",
         "-lc",
@@ -64,13 +59,12 @@
         "-e",
         "bash",
         "-lc",
-        "rm -rf build-linux out"
+        "rm -rf build-linux-debug build-linux-release out"
       ],
       "problemMatcher": []
     },
-
     {
-      "label": "WSL: Configure (Ninja, Debug) [requires ninja]",
+      "label": "WSL: Configure (Unix Makefiles, Release)",
       "type": "shell",
       "command": "wsl.exe",
       "args": [
@@ -79,13 +73,13 @@
         "-e",
         "bash",
         "-lc",
-        "cmake --preset linux-debug"
+        "cmake --preset wsl-release"
       ],
       "group": "build",
       "problemMatcher": []
     },
     {
-      "label": "WSL: Build (Ninja, Debug) [requires ninja]",
+      "label": "WSL: Build (Release)",
       "type": "shell",
       "command": "wsl.exe",
       "args": [
@@ -94,11 +88,26 @@
         "-e",
         "bash",
         "-lc",
-        "cmake --build --preset linux-debug"
+        "cmake --build --preset wsl-release"
       ],
       "group": "build",
       "problemMatcher": ["$gcc"],
-      "dependsOn": ["WSL: Configure (Ninja, Debug) [requires ninja]"]
+      "dependsOn": ["WSL: Configure (Unix Makefiles, Release)"]
+    },
+    {
+      "label": "WSL: Run (Release)",
+      "type": "shell",
+      "command": "wsl.exe",
+      "args": [
+        "--cd",
+        "${workspaceFolder}/build-linux-release/GameBuilder2d",
+        "-e",
+        "bash",
+        "-lc",
+        "./GameBuilder2d"
+      ],
+      "group": "test",
+      "problemMatcher": []
     }
     ,
     {
