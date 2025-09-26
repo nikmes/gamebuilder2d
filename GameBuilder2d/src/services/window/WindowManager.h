@@ -100,6 +100,23 @@ private:
     uint32_t console_level_mask_{0x3F}; // bits: 0=trace,1=debug,2=info,3=warn,4=err,5=critical
     std::string console_text_filter_{};
 
+    // Minimal TextEditor-backed console (option 2 restore). No search / incremental diff sophistication.
+    TextEditor log_editor_{};                 // Read-only view of filtered log
+    bool log_editor_initialized_{false};      // Lazy init palette & options
+    std::string log_editor_text_cache_;       // Last emitted full text (for cheap change detection)
+    size_t log_editor_last_line_count_{0};    // For autoscroll cursor placement
+    size_t log_editor_version_{0};            // Incremented when we SetText (search invalidation)
+
+    // Search state (simple single-selection highlighting)
+    std::string console_search_query_{};
+    std::string console_search_last_query_{};
+    bool console_search_case_sensitive_{false};
+    bool console_search_last_case_sensitive_{false};
+    struct ConsoleSearchMatch { int line; int start_col; int end_col; };
+    std::vector<ConsoleSearchMatch> console_search_matches_{};
+    int console_search_current_index_{0};
+    bool console_search_dirty_{false};
+
     // Text Editor state (multi-tab)
     struct EditorTab {
         std::string path;      // absolute or relative on open

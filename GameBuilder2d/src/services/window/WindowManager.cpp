@@ -610,14 +610,13 @@ void WindowManager::renderUI() {
             } else if (w.title == "Text Editor") {
                 renderEditorWindow();
             } else if (w.title == "Console") {
-                // Controls row: level filter, search, max lines, buffer cap, autoscroll, clear
+                // Controls row: max lines, buffer cap, autoscroll, clear, copy, filter, level toggles, search
                 ImGui::SetNextItemWidth(120);
                 ImGui::InputInt("Max lines", &console_max_lines_);
                 if (console_max_lines_ < 100) console_max_lines_ = 100;
                 ImGui::SameLine();
                 ImGui::SetNextItemWidth(120);
-                static int bufCapTmp = 0;
-                bufCapTmp = (int)console_buffer_cap_;
+                static int bufCapTmp = 0; bufCapTmp = (int)console_buffer_cap_;
                 if (ImGui::InputInt("Buffer cap", &bufCapTmp)) {
                     if (bufCapTmp < 1000) bufCapTmp = 1000;
                     console_buffer_cap_ = (size_t)bufCapTmp;
@@ -626,80 +625,188 @@ void WindowManager::renderUI() {
                 ImGui::SameLine();
                 ImGui::Checkbox("Autoscroll", &console_autoscroll_);
                 ImGui::SameLine();
-                if (ImGui::Button("Clear")) { gb2d::logging::clear_log_buffer(); }
+                if (ImGui::Button("Clear")) { gb2d::logging::clear_log_buffer(); log_editor_text_cache_.clear(); log_editor_last_line_count_ = 0; console_search_matches_.clear(); }
+                ImGui::SameLine();
+                if (ImGui::Button("Copy")) {
+                    auto txt = log_editor_.GetText();
+                    ImGui::SetClipboardText(txt.c_str());
+                }
 
-                // Level filter as toggle buttons
                 auto lvlBtn = [&](const char* label, uint32_t bit){
                     bool on = (console_level_mask_ & bit) != 0;
                     if (on) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f,0.6f,0.2f,1.0f));
                     if (ImGui::SmallButton(label)) {
                         console_level_mask_ ^= bit;
-                        if ((console_level_mask_ & 0x3F) == 0) console_level_mask_ = 0x3F; // avoid empty
+                        if ((console_level_mask_ & 0x3F) == 0) console_level_mask_ = 0x3F;
+                        log_editor_text_cache_.clear(); // force rebuild
                     }
                     if (on) ImGui::PopStyleColor();
                     ImGui::SameLine();
                 };
-                lvlBtn("Trace", 1u<<0);
-                lvlBtn("Debug", 1u<<1);
-                lvlBtn("Info",  1u<<2);
-                lvlBtn("Warn",  1u<<3);
-                lvlBtn("Error", 1u<<4);
-                lvlBtn("Crit",  1u<<5);
+                lvlBtn("Trace", 1u<<0); lvlBtn("Debug", 1u<<1); lvlBtn("Info", 1u<<2); lvlBtn("Warn", 1u<<3); lvlBtn("Error", 1u<<4); lvlBtn("Crit", 1u<<5);
                 ImGui::NewLine();
+                ImGui::SetNextItemWidth(260);
+                char filterBuf[256]; std::strncpy(filterBuf, console_text_filter_.c_str(), sizeof(filterBuf)); filterBuf[sizeof(filterBuf)-1] = '\0';
+                if (ImGui::InputText("Filter", filterBuf, IM_ARRAYSIZE(filterBuf))) { console_text_filter_ = filterBuf; log_editor_text_cache_.clear(); console_search_matches_.clear(); }
+                ImGui::SameLine();
+                // Search UI
+                ImGui::SetNextItemWidth(220);
+                char searchBuf[256]; std::strncpy(searchBuf, console_search_query_.c_str(), sizeof(searchBuf)); searchBuf[sizeof(searchBuf)-1] = '\0';
+                bool searchEdited = false;
+                if (ImGui::InputTextWithHint("Search", "find...", searchBuf, IM_ARRAYSIZE(searchBuf))) { console_search_query_ = searchBuf; searchEdited = true; }
+                ImGui::SameLine();
+                ImGui::Checkbox("Aa", &console_search_case_sensitive_);
+                ImGui::SameLine();
+                bool goPrev = ImGui::ArrowButton("##logsearch_prev", ImGuiDir_Left); ImGui::SameLine();
+                bool goNext = ImGui::ArrowButton("##logsearch_next", ImGuiDir_Right); ImGui::SameLine();
+                if (ImGui::Button("Clear Search")) { console_search_query_.clear(); console_search_matches_.clear(); console_search_current_index_ = 0; }
 
-                // Text search
-                ImGui::SetNextItemWidth(300);
-                char filterBuf[256];
-                std::strncpy(filterBuf, console_text_filter_.c_str(), sizeof(filterBuf));
-                filterBuf[sizeof(filterBuf)-1] = '\0';
-                if (ImGui::InputText("##filter", filterBuf, IM_ARRAYSIZE(filterBuf))) {
-                    console_text_filter_ = filterBuf;
+                // Lazy init editor styling
+                if (!log_editor_initialized_) {
+                    log_editor_.SetReadOnly(true);
+                    // Start from dark palette then tweak so that default text is neutral grey (not green)
+                    {
+                        auto pal = TextEditor::GetDarkPalette();
+                        // Defensive bounds check in case enum changes
+                        const size_t defIdx = (size_t)TextEditor::PaletteIndex::Default;
+                        const size_t kwIdx  = (size_t)TextEditor::PaletteIndex::Keyword;
+                        if (defIdx < pal.size()) pal[defIdx] = ImGui::ColorConvertFloat4ToU32(ImVec4(0.75f, 0.75f, 0.75f, 1.0f)); // light grey
+                        if (kwIdx  < pal.size()) pal[kwIdx]  = ImGui::ColorConvertFloat4ToU32(ImVec4(0.25f, 0.95f, 0.40f, 1.0f));  // vivid green for INFO token
+                        log_editor_.SetPalette(pal);
+                    }
+                    log_editor_.SetShowWhitespaces(false);
+                    // Custom simple language definition for log levels so they highlight distinctly
+                    TextEditor::LanguageDefinition logDef;
+                    logDef.mName = "Log";
+                    // Only highlight INFO keyword as requested
+                    logDef.mKeywords.insert("INFO");
+                    // No need for identifiers, comments, etc.
+                    log_editor_.SetLanguageDefinition(logDef);
+                    log_editor_initialized_ = true;
                 }
 
-                // Render lines
-                auto lines = gb2d::logging::read_log_lines_snapshot((size_t)console_max_lines_);
+                // Rebuild editor text when cache invalid or buffer changed size
+                bool needsRebuild = false;
+                // We don't have a direct line count API; take a cheap snapshot of capped size for change detection.
+                auto temp_detect_lines = gb2d::logging::read_log_lines_snapshot((size_t)console_max_lines_);
+                size_t current_raw_size = temp_detect_lines.size();
+                if (log_editor_text_cache_.empty() && current_raw_size > 0) needsRebuild = true;
+                if (!needsRebuild && current_raw_size != log_editor_last_line_count_) needsRebuild = true;
+
+                if (needsRebuild) {
+                    // Reuse detection snapshot by recollecting full snapshot (cost acceptable at this scale)
+                    auto lines = gb2d::logging::read_log_lines_snapshot((size_t)console_max_lines_);
+                    std::string buf; buf.reserve(lines.size() * 70); // rough estimate
+                    size_t shown = 0;
+                    for (const auto& ln : lines) {
+                        uint32_t bit = 0;
+                        switch (ln.level) {
+                            case gb2d::logging::Level::trace: bit = 1u<<0; break;
+                            case gb2d::logging::Level::debug: bit = 1u<<1; break;
+                            case gb2d::logging::Level::info:  bit = 1u<<2; break;
+                            case gb2d::logging::Level::warn:  bit = 1u<<3; break;
+                            case gb2d::logging::Level::err:   bit = 1u<<4; break;
+                            case gb2d::logging::Level::critical: bit = 1u<<5; break;
+                            case gb2d::logging::Level::off: break;
+                        }
+                        if ((console_level_mask_ & bit) == 0) continue;
+                        if (!console_text_filter_.empty()) {
+                            auto hay = ln.text; auto needle = console_text_filter_;
+                            std::transform(hay.begin(), hay.end(), hay.begin(), [](unsigned char c){ return (char)tolower(c); });
+                            std::transform(needle.begin(), needle.end(), needle.begin(), [](unsigned char c){ return (char)tolower(c); });
+                            if (hay.find(needle) == std::string::npos) continue;
+                        }
+                        // ln.text already contains pattern (e.g. "[time] [level] message") from spdlog pattern.
+                        // We remove duplication by NOT prepending another [LEVEL]. Instead, transform the existing level token to uppercase
+                        // so our keyword highlighting fires.
+                        std::string line = ln.text;
+                        // Parse pattern: [time] [level] message
+                        size_t firstClose = line.find(']');
+                        if (firstClose != std::string::npos) {
+                            size_t secondOpen = line.find('[', firstClose + 1);
+                            size_t secondClose = (secondOpen != std::string::npos) ? line.find(']', secondOpen + 1) : std::string::npos;
+                            if (secondOpen != std::string::npos && secondClose != std::string::npos && secondClose > secondOpen + 1) {
+                                std::string levelToken = line.substr(secondOpen + 1, secondClose - secondOpen - 1);
+                                // Trim internal spaces just in case
+                                auto trim = [](std::string& s){
+                                    size_t a = 0; while (a < s.size() && isspace((unsigned char)s[a])) ++a;
+                                    size_t b = s.size(); while (b > a && isspace((unsigned char)s[b-1])) --b;
+                                    s = s.substr(a, b-a);
+                                };
+                                trim(levelToken);
+                                for (auto& c : levelToken) c = (char)toupper((unsigned char)c);
+                                std::string replacement = "[ " + levelToken + " ]"; // Style 2: space-padded level
+                                line.replace(secondOpen, (secondClose - secondOpen) + 1, replacement);
+                            }
+                        }
+                        buf.append(line);
+                        if (!line.empty() && line.back() != '\n') buf.push_back('\n');
+                        ++shown;
+                    }
+                    if (buf != log_editor_text_cache_) {
+                        log_editor_text_cache_.swap(buf);
+                        log_editor_.SetText(log_editor_text_cache_);
+                        if (console_autoscroll_) {
+                            // Move cursor to end to keep view bottom
+                            auto totalLines = (int)log_editor_.GetTotalLines();
+                            log_editor_.SetCursorPosition({ totalLines, 0 });
+                        }
+                        ++log_editor_version_;
+                        console_search_dirty_ = true;
+                    }
+                    log_editor_last_line_count_ = current_raw_size;
+                }
+
+                // Recompute search matches if needed
+                if (searchEdited || console_search_dirty_ || console_search_last_query_ != console_search_query_ || console_search_last_case_sensitive_ != console_search_case_sensitive_) {
+                    console_search_matches_.clear();
+                    console_search_current_index_ = 0;
+                    console_search_last_query_ = console_search_query_;
+                    console_search_last_case_sensitive_ = console_search_case_sensitive_;
+                    console_search_dirty_ = false;
+                    if (!console_search_query_.empty()) {
+                        auto linesFull = log_editor_.GetTextLines();
+                        std::string needle = console_search_query_;
+                        if (!console_search_case_sensitive_) {
+                            std::transform(needle.begin(), needle.end(), needle.begin(), [](unsigned char c){ return (char)tolower(c); });
+                        }
+                        for (int li = 0; li < (int)linesFull.size(); ++li) {
+                            std::string hay = linesFull[li];
+                            if (!console_search_case_sensitive_) {
+                                std::transform(hay.begin(), hay.end(), hay.begin(), [](unsigned char c){ return (char)tolower(c); });
+                            }
+                            size_t pos = hay.find(needle);
+                            while (!needle.empty() && pos != std::string::npos) {
+                                console_search_matches_.push_back({ li, (int)pos, (int)(pos + needle.size()) });
+                                pos = hay.find(needle, pos + (needle.size() ? needle.size() : 1));
+                            }
+                        }
+                    }
+                }
+
+                // Navigation
+                if (!console_search_matches_.empty()) {
+                    if (goNext) { console_search_current_index_ = (console_search_current_index_ + 1) % (int)console_search_matches_.size(); }
+                    if (goPrev) { console_search_current_index_ = (console_search_current_index_ - 1 + (int)console_search_matches_.size()) % (int)console_search_matches_.size(); }
+                    ImGui::SameLine();
+                    ImGui::TextDisabled("%d/%d", console_search_current_index_ + 1, (int)console_search_matches_.size());
+                } else if (!console_search_query_.empty()) {
+                    ImGui::SameLine(); ImGui::TextDisabled("0/0");
+                }
+
+                // Highlight current match (selection)
+                if (!console_search_matches_.empty()) {
+                    const auto& m = console_search_matches_[console_search_current_index_];
+                    TextEditor::Coordinates start{ m.line, m.start_col };
+                    TextEditor::Coordinates end{ m.line, m.end_col };
+                    log_editor_.SetSelection(start, end, TextEditor::SelectionMode::Normal);
+                    log_editor_.SetCursorPosition(end);
+                }
+
+                // Render editor in child region
                 ImGui::Separator();
-                ImGui::BeginChild("log_lines", ImVec2(0,0), false, ImGuiWindowFlags_HorizontalScrollbar);
-                for (const auto& ln : lines) {
-                    uint32_t bit = 0;
-                    switch (ln.level) {
-                        case gb2d::logging::Level::trace: bit = 1u<<0; break;
-                        case gb2d::logging::Level::debug: bit = 1u<<1; break;
-                        case gb2d::logging::Level::info:  bit = 1u<<2; break;
-                        case gb2d::logging::Level::warn:  bit = 1u<<3; break;
-                        case gb2d::logging::Level::err:   bit = 1u<<4; break;
-                        case gb2d::logging::Level::critical: bit = 1u<<5; break;
-                        case gb2d::logging::Level::off: break;
-                    }
-                    if ((console_level_mask_ & bit) == 0) continue;
-                    if (!console_text_filter_.empty()) {
-                        // Case-insensitive substring match
-                        auto hay = ln.text;
-                        auto needle = console_text_filter_;
-                        std::transform(hay.begin(), hay.end(), hay.begin(), [](unsigned char c){ return (char)tolower(c); });
-                        std::transform(needle.begin(), needle.end(), needle.begin(), [](unsigned char c){ return (char)tolower(c); });
-                        if (hay.find(needle) == std::string::npos) continue;
-                    }
-
-                    ImVec4 col = ImVec4(0.8f,0.8f,0.8f,1.0f);
-                    switch (ln.level) {
-                        case gb2d::logging::Level::trace: col = ImVec4(0.6f,0.6f,0.6f,1.0f); break;
-                        case gb2d::logging::Level::debug: col = ImVec4(0.7f,0.7f,0.9f,1.0f); break;
-                        case gb2d::logging::Level::info: col = ImVec4(0.8f,0.8f,0.8f,1.0f); break;
-                        case gb2d::logging::Level::warn: col = ImVec4(1.0f,0.9f,0.6f,1.0f); break;
-                        case gb2d::logging::Level::err: col = ImVec4(1.0f,0.6f,0.6f,1.0f); break;
-                        case gb2d::logging::Level::critical: col = ImVec4(1.0f,0.3f,0.3f,1.0f); break;
-                        case gb2d::logging::Level::off: break;
-                    }
-                    ImGui::PushStyleColor(ImGuiCol_Text, col);
-                    ImGui::Text("[%s] %s", gb2d::logging::level_to_label(ln.level), ln.text.c_str());
-                    ImGui::PopStyleColor();
-                }
-
-                if (console_autoscroll_) {
-                    float at_bottom = ImGui::GetScrollY() - ImGui::GetScrollMaxY();
-                    if (at_bottom >= -2.0f) ImGui::SetScrollHereY(1.0f);
-                }
+                ImGui::BeginChild("console_editor", ImVec2(0,0), false, ImGuiWindowFlags_HorizontalScrollbar);
+                log_editor_.Render("##log_editor");
                 ImGui::EndChild();
             } else if (w.title.rfind("Preview:", 0) == 0) {
                 auto itp = previews_.find(w.id);

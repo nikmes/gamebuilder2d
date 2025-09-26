@@ -30,7 +30,7 @@ int main()
 
     unsigned int flags = FLAG_WINDOW_RESIZABLE;
 
-    if (fullscreen) flags |= FLAG_FULLSCREEN_MODE;
+    //if (fullscreen) flags |= FLAG_FULLSCREEN_MODE;
 
     SetConfigFlags(flags);
     InitWindow(1920, 1080, "GameBuilder2d + rlImGui");
