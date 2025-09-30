@@ -23,7 +23,7 @@
 // New modular windows
 #include "ui/Windows/CodeEditorWindow.h"
 #include "ui/Windows/FilePreviewWindow.h"
-#include "ui/Windows/SpaceInvadersWindow.h"
+#include "ui/Windows/GameWindow.h"
 
 namespace gb2d {
 
@@ -53,14 +53,14 @@ static void RegisterBuiltinWindows(WindowRegistry& reg) {
     };
     reg.registerType(std::move(previewDesc));
 
-    // Space Invaders window
-    WindowTypeDesc invadersDesc;
-    invadersDesc.typeId = "space-invaders";
-    invadersDesc.displayName = "Space Invaders";
-    invadersDesc.factory = [](WindowContext&) -> std::unique_ptr<IWindow> {
-        return std::make_unique<SpaceInvadersWindow>();
+    // General Game window (loads embedded games such as Space Invaders)
+    WindowTypeDesc gameDesc;
+    gameDesc.typeId = "game-window";
+    gameDesc.displayName = "Game Window";
+    gameDesc.factory = [](WindowContext&) -> std::unique_ptr<IWindow> {
+        return std::make_unique<GameWindow>();
     };
-    reg.registerType(std::move(invadersDesc));
+    reg.registerType(std::move(gameDesc));
 }
 
 WindowManager::WindowManager() {
@@ -547,7 +547,7 @@ void WindowManager::renderUI() {
     // Toolbar to create windows
     if (ImGui::BeginMainMenuBar()) {
         if (ImGui::BeginMenu("File")) {
-            if (ImGui::MenuItem("Open...")) {
+            if (ImGui::MenuItem("Console")) {
                 IGFD::FileDialogConfig cfg;
                 cfg.path = last_folder_.empty() ? std::string(".") : last_folder_;
                 const char* filters = "Images{.png,.jpg,.jpeg,.bmp,.gif}, Text{.txt,.md,.log}, Code{.h,.hpp,.c,.cpp,.cmake}, .*";
@@ -558,43 +558,45 @@ void WindowManager::renderUI() {
                     ImGui::MenuItem("(empty)", nullptr, false, false);
                 } else {
                     for (size_t i = 0; i < recent_files_.size(); ++i) {
-                        const std::string& p = recent_files_[i];
-                        if (ImGui::MenuItem(p.c_str())) {
-                            addRecentFile(p);
-                            addToast(std::string("Opened: ") + p);
-                            try { last_folder_ = std::filesystem::path(p).parent_path().string(); } catch (...) {}
-                            // Route to modular windows based on extension
-                            std::string ext2;
-                            try { ext2 = std::filesystem::path(p).extension().string(); } catch (...) { ext2.clear(); }
-                            for (auto& c : ext2) c = (char)tolower((unsigned char)c);
-                            bool isText2 = CodeEditorWindow::isTextLikeExtension(ext2);
-                            if (isText2) {
-                                ManagedWindow* existing2 = findByTypeId("code-editor");
-                                if (!existing2) {
-                                    std::string id2 = spawnWindowByType("code-editor", std::string("Text Editor"));
-                                    if (!id2.empty()) focus_request_window_id_ = id2;
-                                    existing2 = findByTypeId("code-editor");
+                        const std::string& path = recent_files_[i];
+                        if (ImGui::MenuItem(path.c_str())) {
+                            addRecentFile(path);
+                            addToast(std::string("Opened: ") + path);
+                            try { last_folder_ = std::filesystem::path(path).parent_path().string(); } catch (...) {}
+
+                            std::string ext;
+                            try { ext = std::filesystem::path(path).extension().string(); }
+                            catch (...) { ext.clear(); }
+                            for (auto& c : ext) c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
+
+                            if (CodeEditorWindow::isTextLikeExtension(ext)) {
+                                ManagedWindow* existing = findByTypeId("code-editor");
+                                if (!existing) {
+                                    std::string id = spawnWindowByType("code-editor", std::string("Text Editor"));
+                                    if (!id.empty()) focus_request_window_id_ = id;
+                                    existing = findByTypeId("code-editor");
                                 }
-                                if (existing2 && existing2->impl) {
-                                    if (auto* ce2 = dynamic_cast<CodeEditorWindow*>(existing2->impl.get())) {
-                                        ce2->openFile(p);
+                                if (existing && existing->impl) {
+                                    if (auto* ce = dynamic_cast<CodeEditorWindow*>(existing->impl.get())) {
+                                        ce->openFile(path);
                                     }
                                 }
                             } else {
-                                std::string id2 = spawnWindowByType("file-preview", std::string("Preview: ") + std::filesystem::path(p).filename().string());
-                                if (!id2.empty()) {
-                                    ManagedWindow* w2 = nullptr;
-                                    for (auto& mw : windows_) if (mw.id == id2) { w2 = &mw; break; }
-                                    if (w2 && w2->impl) {
-                                        if (auto* pv2 = dynamic_cast<FilePreviewWindow*>(w2->impl.get())) pv2->open(p);
+                                std::string id = spawnWindowByType("file-preview", std::string("Preview: ") + std::filesystem::path(path).filename().string());
+                                if (!id.empty()) {
+                                    ManagedWindow* w = nullptr;
+                                    for (auto& mw : windows_) if (mw.id == id) { w = &mw; break; }
+                                    if (w && w->impl) {
+                                        if (auto* pv = dynamic_cast<FilePreviewWindow*>(w->impl.get())) pv->open(path);
                                     }
                                 }
                             }
+                            break;
                         }
                     }
+                    ImGui::Separator();
+                    if (ImGui::MenuItem("Clear Recent")) recent_files_.clear();
                 }
-                ImGui::Separator();
-                if (ImGui::MenuItem("Clear Recent")) recent_files_.clear();
                 ImGui::EndMenu();
             }
             ImGui::EndMenu();
@@ -627,15 +629,36 @@ void WindowManager::renderUI() {
                     focus_request_window_id_ = existing->id;
                 }
             }
-            if (ImGui::MenuItem("Space Invaders")) {
-                ManagedWindow* existing = findByTypeId("space-invaders");
-                if (!existing) {
-                    std::string id = spawnWindowByType("space-invaders", std::string("Space Invaders"));
-                    if (!id.empty()) focus_request_window_id_ = id;
+            if (ImGui::BeginMenu("Games")) {
+                auto games = GameWindow::availableGames();
+                if (games.empty()) {
+                    ImGui::MenuItem("(none)", nullptr, false, false);
                 } else {
-                    existing->open = true;
-                    focus_request_window_id_ = existing->id;
+                    for (const auto& [gameId, gameName] : games) {
+                        if (ImGui::MenuItem(gameName.c_str())) {
+                            ManagedWindow* existing = findByTypeId("game-window");
+                            if (!existing) {
+                                std::string id = spawnWindowByType("game-window", gameName);
+                                if (!id.empty()) {
+                                    focus_request_window_id_ = id;
+                                    existing = findByTypeId("game-window");
+                                }
+                            }
+                            if (existing) {
+                                existing->open = true;
+                                focus_request_window_id_ = existing->id;
+                                if (existing->impl) {
+                                    if (auto* gw = dynamic_cast<GameWindow*>(existing->impl.get())) {
+                                        if (gw->setGameById(gameId)) {
+                                            gw->setTitle(gameName);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
+                ImGui::EndMenu();
             }
             ImGui::EndMenu();
         }

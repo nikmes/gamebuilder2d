@@ -1,3 +1,7 @@
+#include "ui/Windows/GameWindow.h"
+
+// Compatibility stub: the SpaceInvadersWindow class has been superseded by
+// the generic GameWindow system. This file intentionally has no implementation.
 #include "ui/Windows/SpaceInvadersWindow.h"
 #include "ui/WindowContext.h"
 #include <imgui.h>
@@ -106,40 +110,9 @@ void SpaceInvadersWindow::render(WindowContext& /*ctx*/) {
     // Basic controls row
     if (ImGui::Button("Reset")) resetGame(targetW, targetH);
     ImGui::SameLine();
-    ImGui::TextDisabled("Use Left/Right + Space");
+    #include "ui/Windows/GameWindow.h"
 
-    // Update game with dt from raylib
-    float dt = GetFrameTime();
-    // Accept keyboard input only when this window is hovered/focused to avoid stealing input globally
+    // This translation unit is kept as a compatibility placeholder.
+    // The original SpaceInvadersWindow implementation has been replaced by the
+    // generic GameWindow infrastructure.  No symbols are defined here.
     bool acceptInput = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
-    updateGame(dt, targetW, targetH, acceptInput);
-    drawGame(targetW, targetH);
-
-    // Draw the RT scaled to fit the available region; keep pixel-perfect by using exact size
-    // Flip vertically (raylib RenderTexture is upside-down for ImGui)
-    ImGui::BeginChild("game_view", ImVec2(0,0), false, ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoScrollbar);
-    {
-        // draw texture stretched to child content
-        ImVec2 region = ImGui::GetContentRegionAvail();
-        float drawW = region.x > 1 ? region.x : (float)rt_w_;
-        float drawH = region.y > 1 ? region.y : (float)rt_h_;
-        // ImGui expects ImTextureID; raylib texture id is unsigned int
-        ImTextureID texId = (ImTextureID)(intptr_t)rt_.texture.id;
-
-        // Build UVs for vertical flip
-        ImVec2 uv0(0, 1);
-        ImVec2 uv1(1, 0);
-        ImGui::Image(texId, ImVec2(drawW, drawH), uv0, uv1);
-    }
-    ImGui::EndChild();
-}
-
-void SpaceInvadersWindow::serialize(nlohmann::json& out) const {
-    out["title"] = title_;
-}
-
-void SpaceInvadersWindow::deserialize(const nlohmann::json& in) {
-    if (auto it = in.find("title"); it != in.end() && it->is_string()) title_ = *it;
-}
-
-} // namespace gb2d
