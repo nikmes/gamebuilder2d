@@ -443,7 +443,8 @@ void Galaga::updateStarfield(float dt) {
     }
 }
 
-void Galaga::render(int width, int height) {
+void Galaga::render(int width, int height) 
+{
     (void)width; (void)height;
     ClearBackground(Color{ 5, 8, 28, 255 });
 
