@@ -1,4 +1,4 @@
-#include "ui/Windows/Games/HarrierAttack.h"
+#include "games/HarrierAttack.h"
 #include <algorithm>
 #include <cmath>
 #include <string>
@@ -310,7 +310,6 @@ bool HarrierAttack::allTargetsDestroyed() const {
 }
 
 void HarrierAttack::handleCollisions() {
-    // Bombs vs ground targets
     for (auto& bomb : bombs_) {
         if (!bomb.alive) continue;
         for (auto& target : groundTargets_) {
@@ -325,7 +324,6 @@ void HarrierAttack::handleCollisions() {
         }
     }
 
-    // Rockets vs jets
     for (auto& rocket : rockets_) {
         if (!rocket.alive) continue;
         for (auto& jet : enemyJets_) {
@@ -340,7 +338,6 @@ void HarrierAttack::handleCollisions() {
         }
     }
 
-    // Player vs enemy shots
     if (player_.alive && player_.invuln <= 0.0f) {
         for (auto& shot : enemyShots_) {
             if (!shot.alive) continue;
@@ -353,7 +350,6 @@ void HarrierAttack::handleCollisions() {
         }
     }
 
-    // Player vs jets
     if (player_.alive && player_.invuln <= 0.0f) {
         for (auto& jet : enemyJets_) {
             if (!jet.alive) continue;
@@ -366,7 +362,6 @@ void HarrierAttack::handleCollisions() {
         }
     }
 
-    // Player vs terrain (crash)
     if (player_.alive && player_.pos.y >= groundY_ - 4.0f) {
         if (player_.pos.x < carrierStart_ + 20.0f || player_.pos.x > carrierEnd_ - 20.0f || std::fabs(player_.vel.y) > kSafeLandingSpeed * 1.25f) {
             player_.alive = false;
@@ -399,131 +394,106 @@ void HarrierAttack::checkMissionState() {
     if (player_.fuel <= 0.0f && player_.alive) {
         player_.alive = false;
         missionFailed_ = true;
-        setStatusMessage("Fuel exhausted", 2.8f);
-    }
-
-    if (!player_.alive) {
-        missionFailed_ = true;
+        setStatusMessage("Fuel exhausted", 2.5f);
     }
 
     if (player_.missionComplete) {
         missionFailed_ = false;
     }
-}
 
-float HarrierAttack::cameraX() const {
-    float cam = player_.pos.x - width_ * 0.4f;
-    cam = std::clamp(cam, 0.0f, std::max(0.0f, worldWidth_ - static_cast<float>(width_)));
-    return cam;
+    if (!player_.alive && player_.fuel <= 0.0f) {
+        setStatusMessage("Fuel exhausted", 2.5f);
+    }
 }
 
 Vector2 HarrierAttack::toScreen(Vector2 world) const {
-    return { world.x - cameraX(), world.y };
+    float cam = cameraX();
+    return { world.x - cam, world.y };
+}
+
+float HarrierAttack::cameraX() const {
+    float cam = player_.pos.x - width_ * 0.35f;
+    cam = std::clamp(cam, 0.0f, std::max(0.0f, worldWidth_ - width_));
+    return cam;
 }
 
 void HarrierAttack::render(int width, int height) {
-    (void)width; (void)height;
-    ClearBackground(Color{ 18, 26, 56, 255 });
+    (void)height;
+    configureWorld(width, height);
 
-    float cam = cameraX();
+    ClearBackground(Color{ 10, 14, 32, 255 });
 
-    // Sky gradient
-    for (int i = 0; i < height_; ++i) {
-        float t = static_cast<float>(i) / static_cast<float>(height_);
-        Color c = ColorLerp(Color{ 16, 24, 46, 255 }, Color{ 30, 64, 120, 255 }, t);
-        DrawLine(0, i, width_, i, c);
+    float camX = cameraX();
+
+    Rectangle groundRect{ -camX, groundY_, worldWidth_, height_ - groundY_ };
+    DrawRectangleRec(groundRect, Color{ 40, 120, 60, 255 });
+
+    DrawRectangle(-static_cast<int>(camX) + static_cast<int>(carrierStart_), static_cast<int>(groundY_ - 40.0f), 220, 40, Color{ 60, 60, 80, 255 });
+    DrawRectangleLines(-static_cast<int>(camX) + static_cast<int>(carrierStart_), static_cast<int>(groundY_ - 40.0f), 220, 40, Color{ 180, 180, 220, 255 });
+
+    for (float x = islandStart_; x < islandEnd_; x += 32.0f) {
+        DrawRectangle(static_cast<int>(x - camX), static_cast<int>(groundY_ - 30.0f), 28, 30, Color{ 70, 110, 50, 255 });
     }
 
-    // Sea
-    DrawRectangle(0, static_cast<int>(groundY_), width_, height_ - static_cast<int>(groundY_), Color{ 10, 34, 80, 255 });
+    DrawRectangle(static_cast<int>(player_.pos.x - camX - 18.0f), static_cast<int>(player_.pos.y - 12.0f), 36, 10, Color{ 190, 190, 220, 255 });
+    DrawTriangle(Vector2{ player_.pos.x - camX + 18.0f, player_.pos.y - 12.0f }, Vector2{ player_.pos.x - camX + 26.0f, player_.pos.y - 4.0f }, Vector2{ player_.pos.x - camX + 18.0f, player_.pos.y + 4.0f }, Color{ 220, 220, 80, 255 });
 
-    // Carrier deck
-    Rectangle carrierDeck{ carrierStart_ - cam + 10.0f, groundY_ - 6.0f, carrierEnd_ - carrierStart_ - 20.0f, 6.0f };
-    DrawRectangleRec(carrierDeck, Color{ 60, 68, 82, 255 });
-    DrawLine(static_cast<int>(carrierDeck.x), static_cast<int>(carrierDeck.y), static_cast<int>(carrierDeck.x + carrierDeck.width), static_cast<int>(carrierDeck.y), Color{ 200, 210, 220, 255 });
-
-    // Island ground band
-    Rectangle islandRect{ islandStart_ - cam, groundY_ - 22.0f, islandEnd_ - islandStart_, 22.0f };
-    DrawRectangleRec(islandRect, Color{ 68, 92, 60, 255 });
-
-    // Ground targets
-    for (const auto& target : groundTargets_) {
-        if (!target.alive) continue;
-        Rectangle drawRect{ target.rect.x - cam, target.rect.y, target.rect.width, target.rect.height };
-        DrawRectangleRec(drawRect, Color{ 160, 74, 58, 255 });
-        DrawRectangle(drawRect.x, drawRect.y, drawRect.width, drawRect.height, Color{ 230, 200, 200, 200 });
-    }
-
-    // Bombs & rockets
     for (const auto& bomb : bombs_) {
-        Vector2 pos = toScreen(bomb.pos);
-        DrawCircleV(pos, 4.0f, YELLOW);
-    }
-    for (const auto& rocket : rockets_) {
-        Vector2 pos = toScreen(rocket.pos);
-        DrawRectangleV({ pos.x - 3.0f, pos.y - 2.0f }, { 8.0f, 4.0f }, ORANGE);
-        DrawRectangleV({ pos.x, pos.y - 1.0f }, { 8.0f, 2.0f }, RED);
+        if (!bomb.alive) continue;
+        Vector2 screenPos = toScreen(bomb.pos);
+        DrawCircleV({screenPos.x - camX, screenPos.y}, 4.0f, Color{ 240, 200, 120, 255 });
     }
 
-    // Enemy jets
+    for (const auto& rocket : rockets_) {
+        if (!rocket.alive) continue;
+        Vector2 screenPos = toScreen(rocket.pos);
+        DrawRectangle(screenPos.x - camX - 4.0f, screenPos.y - 2.0f, 12, 4, Color{ 240, 220, 80, 255 });
+    }
+
     for (const auto& jet : enemyJets_) {
         if (!jet.alive) continue;
-        Vector2 pos = toScreen(jet.pos);
-        Vector2 tip = { pos.x - 18.0f, pos.y };
-        Vector2 top = { pos.x + 10.0f, pos.y - 10.0f };
-        Vector2 bottom = { pos.x + 10.0f, pos.y + 10.0f };
-        DrawTriangle(tip, top, bottom, Color{ 235, 168, 52, 255 });
-        DrawCircleV({ pos.x - 10.0f, pos.y }, 4.0f, Color{ 80, 16, 16, 255 });
+        Vector2 screenPos = toScreen(jet.pos);
+        DrawTriangle(Vector2{ screenPos.x - camX - 18.0f, screenPos.y + 10.0f }, Vector2{ screenPos.x - camX + 12.0f, screenPos.y }, Vector2{ screenPos.x - camX - 18.0f, screenPos.y - 10.0f }, Color{ 200, 120, 120, 255 });
     }
 
     for (const auto& shot : enemyShots_) {
         if (!shot.alive) continue;
-        Vector2 pos = toScreen(shot.pos);
-        DrawRectangleV({ pos.x - 2.0f, pos.y - 2.0f }, { 4.0f, 4.0f }, SKYBLUE);
+        Vector2 screenPos = toScreen(shot.pos);
+        DrawCircleV({screenPos.x - camX, screenPos.y}, 3.0f, RED);
     }
 
-    // Player aircraft
-    if (player_.alive || player_.invuln > 0.0f) {
-        bool blink = (player_.invuln > 0.0f) && (std::fmod(player_.invuln * 10.0f, 2.0f) > 1.0f);
-        if (!blink) {
-            Vector2 pos = toScreen(player_.pos);
-            Vector2 nose = { pos.x + 22.0f, pos.y };
-            Vector2 tail = { pos.x - 22.0f, pos.y };
-            Vector2 top = { pos.x - 6.0f, pos.y - 12.0f };
-            Vector2 bottom = { pos.x - 6.0f, pos.y + 12.0f };
-            DrawTriangle(nose, top, bottom, RAYWHITE);
-            DrawTriangle(tail, top, bottom, Color{ 90, 110, 140, 255 });
-            DrawCircleV({ pos.x, pos.y }, 6.0f, Color{ 60, 80, 110, 255 });
-        }
+    for (const auto& target : groundTargets_) {
+        if (!target.alive) continue;
+        Rectangle rect = target.rect;
+        rect.x -= camX;
+        DrawRectangleRec(rect, Color{ 100, 90, 120, 255 });
+        DrawRectangleLines(static_cast<int>(rect.x), static_cast<int>(rect.y), static_cast<int>(rect.width), static_cast<int>(rect.height), Color{ 200, 200, 200, 255 });
     }
 
-    // HUD
-    const auto& diff = difficulties_[difficultyIndex_];
-    DrawRectangle(0, 0, width_, 46, Color{ 12, 20, 38, 230 });
-    DrawText(TextFormat("Fuel: %03d", static_cast<int>(player_.fuel)), 18, 10, 18, RAYWHITE);
-    DrawText(TextFormat("Bombs: %02d", player_.bombs), 150, 10, 18, YELLOW);
-    DrawText(TextFormat("Rockets: %02d", player_.rockets), 260, 10, 18, ORANGE);
-    DrawText(TextFormat("Score: %05d", score_), 390, 10, 18, SKYBLUE);
-    DrawText(TextFormat("Difficulty: %s", diff.label.c_str()), 520, 10, 18, LIGHTGRAY);
-    DrawText("1-5 to change difficulty", 520, 28, 16, Color{ 180, 180, 220, 200 });
+    DrawRectangle(20, 20, 220, 92, Color{ 20, 30, 60, 200 });
+    DrawRectangleLines(20, 20, 220, 92, Color{ 180, 200, 255, 200 });
+    DrawText(TextFormat("Speed: %.0f", player_.vel.x), 32, 32, 20, RAYWHITE);
+    DrawText(TextFormat("Altitude: %.0f", groundY_ - player_.pos.y), 32, 52, 20, RAYWHITE);
+    DrawText(TextFormat("Fuel: %.0f", player_.fuel), 32, 72, 20, (player_.fuel < 30.0f) ? RED : RAYWHITE);
+    DrawText(TextFormat("Score: %05d", score_), 32, 92, 20, GOLD);
 
-    if (statusMessageTimer_ > 0.0f && !statusMessage_.empty()) {
-        int widthMsg = MeasureText(statusMessage_.c_str(), 20);
-        DrawText(statusMessage_.c_str(), width_ / 2 - widthMsg / 2, 52, 20, GOLD);
+    std::string difficultyText = "Difficulty: " + difficulties_[difficultyIndex_].label;
+    int diffWidth = MeasureText(difficultyText.c_str(), 20);
+    DrawText(difficultyText.c_str(), width_ - diffWidth - 20, 24, 20, RAYWHITE);
+
+    if (!statusMessage_.empty()) {
+        int msgWidth = MeasureText(statusMessage_.c_str(), 26);
+        DrawText(statusMessage_.c_str(), width_ / 2 - msgWidth / 2, 20, 26, Color{ 255, 240, 120, 255 });
     }
 
-    if (missionFailed_) {
-        const char* msg = "Mission Failed - Press Enter";
-        int tw = MeasureText(msg, 28);
-        DrawText(msg, width_ / 2 - tw / 2, height_ / 2 - 20, 28, RED);
-    } else if (player_.missionComplete) {
+    if (player_.missionComplete) {
         const char* msg = "Mission Complete - Press Enter";
-        int tw = MeasureText(msg, 28);
-        DrawText(msg, width_ / 2 - tw / 2, height_ / 2 - 20, 28, GREEN);
-    } else if (allTargetsDestroyed() && !player_.landed) {
-        const char* msg = "Return to carrier!";
-        int tw = MeasureText(msg, 24);
-        DrawText(msg, width_ / 2 - tw / 2, height_ / 2 - 20, 24, YELLOW);
+        int msgWidth = MeasureText(msg, 28);
+        DrawText(msg, width_ / 2 - msgWidth / 2, height_ / 2 - 20, 28, Color{ 180, 255, 180, 255 });
+    } else if (missionFailed_) {
+        const char* msg = "Mission Failed - Press Enter";
+        int msgWidth = MeasureText(msg, 28);
+        DrawText(msg, width_ / 2 - msgWidth / 2, height_ / 2 - 20, 28, Color{ 255, 120, 120, 255 });
     }
 }
 

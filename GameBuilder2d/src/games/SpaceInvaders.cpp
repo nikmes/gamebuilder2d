@@ -1,4 +1,4 @@
-#include "ui/Windows/Games/SpaceInvaders.h"
+#include "games/SpaceInvaders.h"
 #include <algorithm>
 
 namespace gb2d::games {
@@ -117,7 +117,6 @@ void SpaceInvaders::handleCollisions() {
             }
         }
     }
-    // Victory check
     bool anyAlive = false;
     for (auto& inv : invaders_) if (inv.alive) { anyAlive = true; break; }
     game_won_ = !anyAlive;

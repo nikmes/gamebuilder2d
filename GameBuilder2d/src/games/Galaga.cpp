@@ -1,4 +1,4 @@
-#include "ui/Windows/Games/Galaga.h"
+#include "games/Galaga.h"
 #include <algorithm>
 #include <cmath>
 #include <raymath.h>

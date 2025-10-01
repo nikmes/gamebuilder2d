@@ -27,15 +27,6 @@ add_library(gb2d_window STATIC
   "src/ui/Windows/FilePreviewWindow.cpp"
   "src/ui/Windows/GameWindow.h"
   "src/ui/Windows/GameWindow.cpp"
-  "src/ui/Windows/Games/Game.h"
-  "src/ui/Windows/Games/SpaceInvaders.h"
-  "src/ui/Windows/Games/SpaceInvaders.cpp"
-  "src/ui/Windows/Games/Galaga.h"
-  "src/ui/Windows/Games/Galaga.cpp"
-  "src/ui/Windows/Games/HarrierAttack.h"
-  "src/ui/Windows/Games/HarrierAttack.cpp"
-  "src/ui/Windows/Games/PacMan.h"
-  "src/ui/Windows/Games/PacMan.cpp"
 )
 target_include_directories(gb2d_window PUBLIC "src")
 set_property(TARGET gb2d_window PROPERTY CXX_STANDARD 20)
@@ -50,6 +41,17 @@ target_compile_options(gb2d_window PRIVATE
 add_executable (GameBuilder2d
   "src/GameBuilder2d.cpp"
   "src/GameBuilder2d.h"
+  "src/games/Game.h"
+  "src/games/SpaceInvaders.h"
+  "src/games/SpaceInvaders.cpp"
+  "src/games/Galaga.h"
+  "src/games/Galaga.cpp"
+  "src/games/HarrierAttack.h"
+  "src/games/HarrierAttack.cpp"
+  "src/games/PacMan.h"
+  "src/games/PacMan.cpp"
+  "src/games/PlarformerGame.h"
+  "src/games/PlarformerGame.cpp"
 )
 
 set_property(TARGET GameBuilder2d PROPERTY CXX_STANDARD 20)

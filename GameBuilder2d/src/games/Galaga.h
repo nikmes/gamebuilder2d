@@ -1,5 +1,5 @@
 #pragma once
-#include "ui/Windows/Games/Game.h"
+#include "games/Game.h"
 #include <array>
 #include <vector>
 #include <raylib.h>

@@ -1,4 +1,4 @@
-#include "ui/Windows/Games/PacMan.h"
+#include "games/PacMan.h"
 #include <algorithm>
 #include <array>
 #include <cmath>

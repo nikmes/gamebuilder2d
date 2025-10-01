@@ -1,10 +1,11 @@
 #include "ui/Windows/GameWindow.h"
 #include "ui/WindowContext.h"
-#include "ui/Windows/Games/Game.h"
-#include "ui/Windows/Games/SpaceInvaders.h"
-#include "ui/Windows/Games/Galaga.h"
-#include "ui/Windows/Games/HarrierAttack.h"
-#include "ui/Windows/Games/PacMan.h"
+#include "games/Game.h"
+#include "games/SpaceInvaders.h"
+#include "games/Galaga.h"
+#include "games/HarrierAttack.h"
+#include "games/PacMan.h"
+#include "games/PlarformerGame.h"
 #include <imgui.h>
 #include <nlohmann/json.hpp>
 #include <algorithm>
@@ -41,6 +42,11 @@ namespace {
                 "pac-man",
                 "Pac-Man",
                 [](){ return std::make_unique<games::PacMan>(); }
+            });
+            list.push_back(GameDescriptor{
+                "plarformer",
+                "Plarformer",
+                [](){ return std::make_unique<games::PlarformerGame>(); }
             });
             return list;
         }();
