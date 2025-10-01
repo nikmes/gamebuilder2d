@@ -9,6 +9,7 @@
 #include "ui/FullscreenSession.h"
 #include <memory>
 #include <algorithm>
+#include <string>
 #include "services/configuration/ConfigurationManager.h"
 #include "services/logger/LogManager.h"
 
@@ -43,6 +44,7 @@ int main()
     fullscreenHeight = std::max(fullscreenHeight, 240);
 
     unsigned int flags = FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT;
+
     if (startFullscreen) {
         flags |= FLAG_FULLSCREEN_MODE;
     }
@@ -93,6 +95,19 @@ int main()
             wm.renderUI();
             rlImGuiEnd();
         }
+
+        const int screenWidth = GetScreenWidth();
+        const int screenHeight = GetScreenHeight();
+        std::string resolutionText = "Resolution: " + std::to_string(screenWidth) + "x" + std::to_string(screenHeight);
+        constexpr int fontSize = 20;
+        constexpr int padding = 6;
+        const int textWidth = MeasureText(resolutionText.c_str(), fontSize);
+        const int boxWidth = textWidth + padding * 2;
+        const int boxHeight = fontSize + padding * 2;
+        const int boxX = 10;
+        const int boxY = 10;
+        //DrawRectangle(boxX, boxY, boxWidth, boxHeight, Fade(BLACK, 0.6f));
+        //DrawText(resolutionText.c_str(), boxX + padding, boxY + padding, fontSize, RAYWHITE);
 
         EndDrawing();
     }

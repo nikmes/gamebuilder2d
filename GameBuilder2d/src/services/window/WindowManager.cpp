@@ -68,6 +68,8 @@ static void RegisterBuiltinWindows(WindowRegistry& reg) {
 WindowManager::WindowManager() {
     // Initialize window registry (no behavior change yet)
     RegisterBuiltinWindows(window_registry_);
+    editor_window_restore_width_ = std::max(320, static_cast<int>(ConfigurationManager::getInt("window::width", 1280)));
+    editor_window_restore_height_ = std::max(240, static_cast<int>(ConfigurationManager::getInt("window::height", 720)));
     // Try auto-load last layout if ImGui context is alive
     if (ImGui::GetCurrentContext() != nullptr) {
         loadLayout("last");
@@ -519,6 +521,77 @@ void WindowManager::renderDockTargetsOverlay() {
     }
 }
 
+void WindowManager::toggleEditorFullscreen() {
+    bool currentlyFullscreen = IsWindowFullscreen();
+    setEditorFullscreen(!currentlyFullscreen);
+}
+
+void WindowManager::setEditorFullscreen(bool enable) {
+    if (fullscreen_session_ && fullscreen_session_->isActive()) {
+        gb2d::logging::LogManager::warn("Cannot toggle editor fullscreen while a game fullscreen session is active.");
+        return;
+    }
+
+    bool currentlyFullscreen = IsWindowFullscreen();
+
+    if (enable) {
+        if (!currentlyFullscreen) {
+            editor_window_restore_width_ = std::max(GetScreenWidth(), 320);
+            editor_window_restore_height_ = std::max(GetScreenHeight(), 240);
+            ConfigurationManager::set("window::width", static_cast<int64_t>(editor_window_restore_width_));
+            ConfigurationManager::set("window::height", static_cast<int64_t>(editor_window_restore_height_));
+            ToggleFullscreen();
+            currentlyFullscreen = IsWindowFullscreen();
+        } else {
+            if (editor_window_restore_width_ <= 0 || editor_window_restore_height_ <= 0) {
+                editor_window_restore_width_ = std::max(320, static_cast<int>(ConfigurationManager::getInt("window::width", 1280)));
+                editor_window_restore_height_ = std::max(240, static_cast<int>(ConfigurationManager::getInt("window::height", 720)));
+            }
+        }
+
+        if (!currentlyFullscreen) {
+            gb2d::logging::LogManager::warn("Failed to enter editor fullscreen mode.");
+            return;
+        }
+
+    int monitorIndex = GetCurrentMonitor();
+    int monitorWidth = GetMonitorWidth(monitorIndex);
+    int monitorHeight = GetMonitorHeight(monitorIndex);
+    if (monitorWidth <= 0) monitorWidth = GetScreenWidth();
+    if (monitorHeight <= 0) monitorHeight = GetScreenHeight();
+
+    int fullscreenWidth = std::max(320, static_cast<int>(ConfigurationManager::getInt("fullscreen::width", monitorWidth > 0 ? monitorWidth : 1920)));
+    int fullscreenHeight = std::max(240, static_cast<int>(ConfigurationManager::getInt("fullscreen::height", monitorHeight > 0 ? monitorHeight : 1080)));
+        SetWindowSize(fullscreenWidth, fullscreenHeight);
+        ConfigurationManager::set("fullscreen::width", static_cast<int64_t>(fullscreenWidth));
+        ConfigurationManager::set("fullscreen::height", static_cast<int64_t>(fullscreenHeight));
+        ConfigurationManager::set("window::fullscreen", true);
+        ConfigurationManager::save();
+        gb2d::logging::LogManager::info("Editor fullscreen enabled: {}x{}", fullscreenWidth, fullscreenHeight);
+        return;
+    }
+
+    int targetWidth = editor_window_restore_width_ > 0
+        ? editor_window_restore_width_
+        : std::max(320, static_cast<int>(ConfigurationManager::getInt("window::width", 1280)));
+    int targetHeight = editor_window_restore_height_ > 0
+        ? editor_window_restore_height_
+        : std::max(240, static_cast<int>(ConfigurationManager::getInt("window::height", 720)));
+
+    if (currentlyFullscreen) {
+        ToggleFullscreen();
+    }
+
+    SetWindowSize(targetWidth, targetHeight);
+    editor_window_restore_width_ = targetWidth;
+    editor_window_restore_height_ = targetHeight;
+    ConfigurationManager::set("window::fullscreen", false);
+    ConfigurationManager::set("window::width", static_cast<int64_t>(targetWidth));
+    ConfigurationManager::set("window::height", static_cast<int64_t>(targetHeight));
+    ConfigurationManager::save();
+    gb2d::logging::LogManager::info("Editor fullscreen disabled: {}x{}", targetWidth, targetHeight);
+}
+
 void WindowManager::renderUI() {
     if (shutting_down_) return; // guard against late calls during teardown
     ImGuiIO& io = ImGui::GetIO();
@@ -617,6 +690,14 @@ void WindowManager::renderUI() {
                     existing->open = true;
                     focus_request_window_id_ = existing->id;
                 }
+            }
+            bool sessionActive = fullscreen_session_ && fullscreen_session_->isActive();
+            bool editorFullscreen = IsWindowFullscreen();
+            if (ImGui::MenuItem("Editor Fullscreen", nullptr, editorFullscreen, !sessionActive)) {
+                toggleEditorFullscreen();
+            }
+            if (sessionActive && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                ImGui::SetTooltip("Exit game fullscreen before toggling the editor view.");
             }
             ImGui::EndMenu();
         }

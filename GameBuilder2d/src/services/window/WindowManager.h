@@ -76,6 +76,8 @@ private:
 
     std::string makeLabel(const ManagedWindow& w) const;
     void renderDockTargetsOverlay();
+    void toggleEditorFullscreen();
+    void setEditorFullscreen(bool enable);
 
     struct Toast {
         std::string text;
@@ -119,6 +121,8 @@ private:
     WindowRegistry window_registry_{};
 
     FullscreenSession* fullscreen_session_{nullptr};
+    int editor_window_restore_width_{0};
+    int editor_window_restore_height_{0};
 };
 
 } // namespace gb2d

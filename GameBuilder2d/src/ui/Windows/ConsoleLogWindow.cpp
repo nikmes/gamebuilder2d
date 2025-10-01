@@ -135,6 +135,7 @@ void ConsoleLogWindow::initEditorIfNeeded() {
     palette[(int)TextEditor::PaletteIndex::Keyword] = 0xFFFF5A5A;           // ERROR
     palette[(int)TextEditor::PaletteIndex::Preprocessor] = 0xFFE070FF;      // CRIT
     palette[(int)TextEditor::PaletteIndex::Punctuation] = 0xFFAAAAAA;
+    palette[(int)TextEditor::PaletteIndex::Default] = 0xFF00FF00;
     palette[(int)TextEditor::PaletteIndex::Background] = 0xFF1E1E1E;
     editor_.SetPalette(palette);
     editor_.SetLanguageDefinition(CreateLogLanguageDefinition());
