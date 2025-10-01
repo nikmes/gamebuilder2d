@@ -1,19 +1,19 @@
 {
+  "fullscreen": {
+    "game_height": 1080,
+    "game_width": 1920,
+    "height": 2160,
+    "width": 3840
+  },
   "ui": {
     "theme": "dark"
   },
   "version": 1,
   "window": {
-    "fullscreen": true,
+    "fullscreen": false,
     "fullscreen_last_game": "",
-    "height": 420,
+    "height": 1080,
     "resume_fullscreen": false,
-    "width": 640
-  }, 
-  "fullscreen": {
-    "width": 3840,
-    "height": 2160,
-    "game_width": 1920,
-    "game_height": 1080
+    "width": 1920
   }
 }
