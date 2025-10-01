@@ -212,6 +212,15 @@ target_include_directories(gb2d_configuration PUBLIC "src")
 set_property(TARGET gb2d_configuration PROPERTY CXX_STANDARD 20)
 target_link_libraries(gb2d_configuration PUBLIC nlohmann_json::nlohmann_json)
 
+# Texture service library
+add_library(gb2d_texture
+  "src/services/texture/TextureManager.h"
+  "src/services/texture/TextureManager.cpp"
+)
+target_include_directories(gb2d_texture PUBLIC "src")
+set_property(TARGET gb2d_texture PROPERTY CXX_STANDARD 20)
+target_link_libraries(gb2d_texture PUBLIC raylib gb2d_configuration gb2d_logging)
+
 ## lwlog removed
 
 # ImGuiFileDialog
@@ -297,7 +306,7 @@ target_link_libraries(rlImGui PUBLIC raylib imgui)
 # Window library depends on ImGui, file dialog, and raylib
 target_link_libraries(gb2d_window PUBLIC imgui imguifiledialog raylib gb2d_logging imguicolortextedit nlohmann_json::nlohmann_json)
 
-target_link_libraries(GameBuilder2d PRIVATE raylib rlImGui imgui imguifiledialog gb2d_configuration gb2d_window gb2d_logging)
+target_link_libraries(GameBuilder2d PRIVATE raylib rlImGui imgui imguifiledialog gb2d_configuration gb2d_window gb2d_logging gb2d_texture)
 
 if (WIN32)
   target_link_libraries(GameBuilder2d PRIVATE winmm)

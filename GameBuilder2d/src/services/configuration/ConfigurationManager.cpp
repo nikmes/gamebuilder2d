@@ -235,6 +235,13 @@ void ConfigurationManager::loadOrDefault() {
 	ensure_path(c, "fullscreen.game_width") = 0;
 	ensure_path(c, "fullscreen.game_height") = 0;
 	ensure_path(c, "ui.theme") = "dark";
+	auto& textureSearch = ensure_path(c, "textures.search_paths");
+	textureSearch = json::array();
+	textureSearch.push_back("assets/textures");
+	ensure_path(c, "textures.default_filter") = "bilinear";
+	ensure_path(c, "textures.generate_mipmaps") = false;
+	ensure_path(c, "textures.max_bytes") = 0;
+	ensure_path(c, "textures.placeholder_path") = "";
 	size_t overrides = apply_env_overrides(c);
 	(void)overrides; // no logging
 }

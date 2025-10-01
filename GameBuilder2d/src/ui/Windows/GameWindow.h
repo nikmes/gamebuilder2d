@@ -1,9 +1,11 @@
 #pragma once
 #include "ui/Window.h"
+#include "services/texture/TextureManager.h"
 #include <nlohmann/json_fwd.hpp>
 #include <raylib.h>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -39,11 +41,14 @@ private:
         std::string id;
         std::string name;
         std::function<std::unique_ptr<games::Game>()> factory;
+        std::optional<gb2d::textures::AcquireResult> icon;
     };
 
     void unloadRenderTarget();
     void ensureRenderTarget(int w, int h);
     void registerDefaultGames();
+    void loadIconForEntry(GameEntry& entry);
+    void releaseGameIcons();
     void ensureGameSelected();
     void switchGame(int index);
     void resetCurrentGame();

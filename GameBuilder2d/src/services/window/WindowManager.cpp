@@ -626,11 +626,19 @@ void WindowManager::renderUI() {
     // Toolbar to create windows
     if (ImGui::BeginMainMenuBar()) {
         if (ImGui::BeginMenu("File")) {
-            if (ImGui::MenuItem("Console")) {
+            auto launchFileDialog = [&](const char* dialogTitle, const char* filters) {
                 IGFD::FileDialogConfig cfg;
                 cfg.path = last_folder_.empty() ? std::string(".") : last_folder_;
+                ImGuiFileDialog::Instance()->OpenDialog("FileOpenDlg", dialogTitle, filters, cfg);
+            };
+
+            if (ImGui::MenuItem("Open File...")) {
                 const char* filters = "Images{.png,.jpg,.jpeg,.bmp,.gif}, Text{.txt,.md,.log}, Code{.h,.hpp,.c,.cpp,.cmake}, .*";
-                ImGuiFileDialog::Instance()->OpenDialog("FileOpenDlg", "Open File", filters, cfg);
+                launchFileDialog("Open File", filters);
+            }
+            if (ImGui::MenuItem("Open Image...")) {
+                const char* imageFilters = "Images{.png,.jpg,.jpeg,.bmp,.gif,.tga,.dds,.psd,.hdr}";
+                launchFileDialog("Open Image", imageFilters);
             }
             if (ImGui::BeginMenu("Open Recent")) {
                 if (recent_files_.empty()) {
@@ -747,6 +755,25 @@ void WindowManager::renderUI() {
                 }
                 ImGui::EndMenu();
             }
+            if (ImGui::BeginMenu("File Previews")) {
+                bool anyPreview = false;
+                for (auto& mw : windows_) {
+                    if (!mw.impl || std::string(mw.impl->typeId()) != "file-preview") continue;
+                    anyPreview = true;
+                    ImGui::PushID(mw.id.c_str());
+                    bool wasOpen = mw.open;
+                    if (ImGui::MenuItem(mw.title.c_str(), nullptr, &mw.open)) {
+                        if (!wasOpen && mw.open) {
+                            focus_request_window_id_ = mw.id;
+                        }
+                    }
+                    ImGui::PopID();
+                }
+                if (!anyPreview) {
+                    ImGui::MenuItem("(none)", nullptr, false, false);
+                }
+                ImGui::EndMenu();
+            }
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Layouts")) {
@@ -825,8 +852,13 @@ void WindowManager::renderUI() {
     }
 
     // Render each managed window as an ImGui window (dockable)
+    std::vector<std::string> filePreviewCloseQueue;
     for (auto& w : windows_) {
-        if (!w.open) continue;
+        bool isFilePreview = w.impl && w.impl->typeId() && std::strcmp(w.impl->typeId(), "file-preview") == 0;
+        if (!w.open) {
+            if (isFilePreview) filePreviewCloseQueue.push_back(w.id);
+            continue;
+        }
         // If modular impl exists, keep title in sync
         if (w.impl) {
             // Pull title from impl if different
@@ -835,7 +867,9 @@ void WindowManager::renderUI() {
         }
         std::string label = makeLabel(w);
         bool open = w.open;
-        if (ImGui::Begin(label.c_str(), &open)) {
+    ImGuiWindowFlags windowFlags = 0;
+    if (isFilePreview) windowFlags |= ImGuiWindowFlags_NoSavedSettings;
+    if (ImGui::Begin(label.c_str(), &open, windowFlags)) {
             // Allow impl to render its content
             if (w.impl) {
                 WindowContext ctx{};
@@ -900,6 +934,14 @@ void WindowManager::renderUI() {
         }
         ImGui::End();
         w.open = open;
+        if (!w.open && isFilePreview) {
+            filePreviewCloseQueue.push_back(w.id);
+        }
+    }
+
+    for (const auto& id : filePreviewCloseQueue) {
+        cleanupPreview(id);
+        closeWindow(id);
     }
 
     // Process undock requests: in ImGui, undock by setting next window dock id to 0

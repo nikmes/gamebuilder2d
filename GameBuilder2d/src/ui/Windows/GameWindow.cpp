@@ -1,15 +1,19 @@
 #include "ui/Windows/GameWindow.h"
 #include "ui/WindowContext.h"
 #include "ui/FullscreenSession.h"
+#include "ui/ImGuiTextureHelpers.h"
 #include "games/Game.h"
 #include "games/SpaceInvaders.h"
 #include "games/Galaga.h"
 #include "games/HarrierAttack.h"
 #include "games/PacMan.h"
 #include "games/PlarformerGame.h"
+#include "services/logger/LogManager.h"
 #include <imgui.h>
 #include <nlohmann/json.hpp>
 #include <algorithm>
+#include <cstdint>
+#include <type_traits>
 #include <utility>
 
 namespace gb2d {
@@ -64,6 +68,7 @@ GameWindow::~GameWindow() {
         current_game_->unload();
         current_game_.reset();
     }
+    releaseGameIcons();
     unloadRenderTarget();
 }
 
@@ -96,6 +101,7 @@ void GameWindow::registerDefaultGames() {
         entry.id = desc.id;
         entry.name = desc.name;
         entry.factory = desc.factory;
+        loadIconForEntry(entry);
         games_.push_back(std::move(entry));
     }
 }
@@ -184,9 +190,26 @@ void GameWindow::render(WindowContext& ctx) {
             if (isCurrent) {
                 ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.6f, 0.2f, 1.0f));
             }
+            ImGui::BeginGroup();
+            const Texture2D* iconTexture = nullptr;
+            bool iconPlaceholder = false;
+            if (games_[i].icon) {
+                iconTexture = gb2d::textures::TextureManager::tryGet(games_[i].icon->key);
+                iconPlaceholder = games_[i].icon->placeholder;
+            }
+            if (iconTexture) {
+                constexpr float kIconSize = 36.0f;
+                ImTextureID iconId = gb2d::ui::makeImTextureId<ImTextureID>(iconTexture->id);
+                ImGui::Image(iconId, ImVec2(kIconSize, kIconSize));
+                if (iconPlaceholder && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNone)) {
+                    ImGui::SetTooltip("Placeholder icon (asset missing)");
+                }
+                ImGui::Spacing();
+            }
             if (ImGui::SmallButton(games_[i].name.c_str())) {
                 switchGame(i);
             }
+            ImGui::EndGroup();
             if (isCurrent) {
                 ImGui::PopStyleColor();
             }
@@ -281,6 +304,35 @@ std::vector<std::pair<std::string, std::string>> GameWindow::availableGames() {
 
 void GameWindow::handleFullscreenExit() {
     game_needs_init_ = true;
+}
+
+void GameWindow::loadIconForEntry(GameEntry& entry) {
+    using gb2d::logging::LogManager;
+    const std::string relativePath = "ui/game-icons/" + entry.id + ".png";
+    const std::string alias = "game-window/icon/" + entry.id;
+    auto acquired = gb2d::textures::TextureManager::acquire(relativePath, alias);
+    if (!acquired.texture) {
+        LogManager::warn("GameWindow icon '{}' failed to acquire texture (placeholder unavailable)", relativePath);
+    } else if (acquired.placeholder) {
+        LogManager::debug("GameWindow icon '{}' using placeholder texture", relativePath);
+    } else {
+        LogManager::debug("GameWindow icon '{}' loaded", relativePath);
+    }
+    entry.icon = std::move(acquired);
+}
+
+void GameWindow::releaseGameIcons() {
+    using gb2d::logging::LogManager;
+    for (auto& entry : games_) {
+        if (!entry.icon || entry.icon->key.empty()) {
+            entry.icon.reset();
+            continue;
+        }
+        if (!gb2d::textures::TextureManager::release(entry.icon->key)) {
+            LogManager::warn("GameWindow failed to release icon '{}'", entry.icon->key);
+        }
+        entry.icon.reset();
+    }
 }
 
 } // namespace gb2d

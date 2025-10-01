@@ -12,6 +12,7 @@
 #include <string>
 #include "services/configuration/ConfigurationManager.h"
 #include "services/logger/LogManager.h"
+#include "services/texture/TextureManager.h"
 
 using namespace std;
 
@@ -75,6 +76,8 @@ int main()
 
     rlImGuiSetup(true);
 
+    gb2d::textures::TextureManager::init();
+
     // Enable docking in ImGui (after context is created)
     ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
@@ -116,6 +119,7 @@ int main()
     // Save layout before shutting down ImGui
     fullscreenSession.requestStop();
     wm.saveLayout();
+    gb2d::textures::TextureManager::shutdown();
     rlImGuiShutdown();
     CloseWindow();
     gb2d::logging::LogManager::info("Shutting down GameBuilder2d");

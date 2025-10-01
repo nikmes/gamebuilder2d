@@ -8,6 +8,15 @@
   "ui": {
     "theme": "dark"
   },
+  "textures": {
+    "search_paths": [
+      "assets/textures"
+    ],
+    "default_filter": "bilinear",
+    "generate_mipmaps": false,
+    "max_bytes": 0,
+    "placeholder_path": ""
+  },
   "version": 1,
   "window": {
     "fullscreen": false,

@@ -48,3 +48,18 @@ target_compile_definitions(window_tests PRIVATE GB2D_INTERNAL_TESTING=1)
 
 include(Catch)
 catch_discover_tests(window_tests)
+
+# Texture manager tests
+add_executable(texture_tests
+  test_bootstrap.cpp
+  unit/texture/test_texture_manager.cpp
+)
+target_include_directories(texture_tests PRIVATE
+  ${CMAKE_SOURCE_DIR}/GameBuilder2d/src
+)
+target_link_libraries(texture_tests PRIVATE Catch2::Catch2WithMain gb2d_texture gb2d_configuration gb2d_logging)
+set_property(TARGET texture_tests PROPERTY CXX_STANDARD 20)
+target_compile_definitions(texture_tests PRIVATE GB2D_INTERNAL_TESTING=1)
+
+include(Catch)
+catch_discover_tests(texture_tests)

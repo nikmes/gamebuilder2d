@@ -3,7 +3,9 @@
 #include <string>
 #include <optional>
 #include <vector>
+
 #include "raylib.h"
+#include "services/texture/TextureManager.h"
 
 namespace gb2d {
 
@@ -32,7 +34,8 @@ private:
     Kind kind_{Kind::None};
     std::string text_{};
     int imgW_{0}, imgH_{0};
-    unsigned int texId_{0};
+    bool imagePlaceholder_{false};
+    gb2d::textures::AcquireResult imageTexture_{};
     bool loaded_{false};
 
     void unload();

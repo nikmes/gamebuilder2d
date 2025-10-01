@@ -111,6 +111,16 @@ On WSL, reconfigure with `-DBUILD_TESTING=ON` or use the `windows-vs2022-x64-rel
 - Environment overrides: `GB2D_<SECTION>__<KEY>=value` (double underscore becomes dot). Values auto-detect booleans, integers, and floats.
 - Layout exports live in `out/layouts/<name>.{wm.txt,imgui.ini,layout.json}`. The manager restores `last` automatically on startup and backs up corrupted layouts.
 
+## TextureManager quickstart
+
+- Initialized once during app bootstrap (`TextureManager::init` / `shutdown` already wired in `GameBuilder2d.cpp`).
+- Configure search paths, filters, mipmap behaviour, and placeholder assets via the `textures::` section in `config.json`.
+- Request textures through `TextureManager::acquire(identifier, alias)` and pair every successful call with `TextureManager::release(key)`.
+- Handle placeholder returns with `AcquireResult::placeholder` to signal missing art in the UI.
+- Use `TextureManager::metrics()` and `reloadAll()` to power diagnostics overlays or asset-refresh workflows.
+
+👉 See the [TextureManager developer guide](GameBuilder2d/docs/texture-manager.md) for end‑to‑end examples, configuration tables, and the current roadmap.
+
 ## Dependencies
 
 - **raylib 5.5** (graphics/input) with GLFW extras disabled for faster builds
