@@ -27,6 +27,8 @@ add_library(gb2d_window STATIC
   "src/ui/Windows/FilePreviewWindow.cpp"
   "src/ui/Windows/GameWindow.h"
   "src/ui/Windows/GameWindow.cpp"
+  "src/ui/FullscreenSession.h"
+  "src/ui/FullscreenSession.cpp"
 )
 target_include_directories(gb2d_window PUBLIC "src")
 set_property(TARGET gb2d_window PROPERTY CXX_STANDARD 20)

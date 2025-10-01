@@ -5,7 +5,13 @@
   "version": 1,
   "window": {
     "fullscreen": true,
-    "height": 1920,
-    "width": 1080
+    "fullscreen_last_game": "",
+    "height": 0,
+    "resume_fullscreen": false,
+    "width": 0
+  }, 
+  "fullscreen": {
+    "width": 3840,
+    "height": 2160
   }
 }

@@ -6,7 +6,9 @@
 #include "rlImGui.h"
 #include "imgui.h"
 #include "services/window/WindowManager.h"
+#include "ui/FullscreenSession.h"
 #include <memory>
+#include <algorithm>
 #include "services/configuration/ConfigurationManager.h"
 #include "services/logger/LogManager.h"
 
@@ -19,22 +21,54 @@ int main()
 
     gb2d::logging::LogManager::init({"GameBuilder2d", gb2d::logging::Level::info, "[%H:%M:%S] [%^%l%$] %v"});
     gb2d::logging::LogManager::info("Starting GameBuilder2d");
-    gb2d::ConfigurationManager::loadOrDefault();
+    bool configLoaded = gb2d::ConfigurationManager::load();
+    if (!configLoaded) {
+        gb2d::logging::LogManager::warn("Configuration file missing or invalid; using defaults");
+    }
 
-    // Example: set and persist fullscreen via ConfigurationManager (section-style key)
-    gb2d::ConfigurationManager::set("window::fullscreen", true);
-    gb2d::ConfigurationManager::save();
+    constexpr int kDefaultWidth = 1280;
+    constexpr int kDefaultHeight = 720;
+    constexpr int kDefaultFullscreenWidth = 1920;
+    constexpr int kDefaultFullscreenHeight = 1080;
 
-    // Read the value back using the same manager
-    bool fullscreen = gb2d::ConfigurationManager::getBool("window::fullscreen", false);
+    int configWidth = static_cast<int>(gb2d::ConfigurationManager::getInt("window::width", kDefaultWidth));
+    int configHeight = static_cast<int>(gb2d::ConfigurationManager::getInt("window::height", kDefaultHeight));
+    bool startFullscreen = gb2d::ConfigurationManager::getBool("window::fullscreen", false);
+    int fullscreenWidth = static_cast<int>(gb2d::ConfigurationManager::getInt("fullscreen::width", kDefaultFullscreenWidth));
+    int fullscreenHeight = static_cast<int>(gb2d::ConfigurationManager::getInt("fullscreen::height", kDefaultFullscreenHeight));
+
+    configWidth = std::max(configWidth, 320);
+    configHeight = std::max(configHeight, 240);
+    fullscreenWidth = std::max(fullscreenWidth, 320);
+    fullscreenHeight = std::max(fullscreenHeight, 240);
 
     unsigned int flags = FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT;
-
-    if (fullscreen) flags = FLAG_FULLSCREEN_MODE | FLAG_VSYNC_HINT;;
+    if (startFullscreen) {
+        flags |= FLAG_FULLSCREEN_MODE;
+    }
 
     SetConfigFlags(flags);
-    InitWindow(1920, 1080, "GameBuilder2d + rlImGui");
-    gb2d::logging::LogManager::info("Window initialized: {}x{}", GetScreenWidth(), GetScreenHeight());
+    InitWindow(configWidth, configHeight, "GameBuilder2d + rlImGui");
+
+    if (startFullscreen && !IsWindowFullscreen()) {
+        ToggleFullscreen();
+    }
+
+    if (startFullscreen) {
+        SetWindowSize(fullscreenWidth, fullscreenHeight);
+    } else {
+        SetWindowSize(configWidth, configHeight);
+    }
+
+    gb2d::logging::LogManager::info(
+        "Window initialized: {}x{} (fullscreen={}, editor={}x{}, session={}x{})",
+        GetScreenWidth(),
+        GetScreenHeight(),
+        startFullscreen ? "true" : "false",
+        configWidth,
+        configHeight,
+        fullscreenWidth,
+        fullscreenHeight);
     SetTargetFPS(60);
 
     rlImGuiSetup(true);
@@ -42,22 +76,30 @@ int main()
     // Enable docking in ImGui (after context is created)
     ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
-    static gb2d::WindowManager wm{};
+    gb2d::WindowManager wm{};
+    gb2d::FullscreenSession fullscreenSession{};
+    wm.setFullscreenSession(&fullscreenSession);
 
     while (!WindowShouldClose())
     {
+        float dt = GetFrameTime();
         BeginDrawing();
-        ClearBackground(DARKGRAY);
 
-        rlImGuiBegin();
-        wm.renderUI();
-        rlImGuiEnd();
+        if (fullscreenSession.isActive()) {
+            fullscreenSession.tick(dt);
+        } else {
+            ClearBackground(DARKGRAY);
+            rlImGuiBegin();
+            wm.renderUI();
+            rlImGuiEnd();
+        }
 
         EndDrawing();
     }
 
     // printf("Exiting GameBuilder2d\n");
     // Save layout before shutting down ImGui
+    fullscreenSession.requestStop();
     wm.saveLayout();
     rlImGuiShutdown();
     CloseWindow();

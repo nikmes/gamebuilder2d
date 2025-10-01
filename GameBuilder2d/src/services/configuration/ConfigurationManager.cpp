@@ -229,6 +229,9 @@ void ConfigurationManager::loadOrDefault() {
 	ensure_path(c, "version") = kCurrentConfigVersion;
 	ensure_path(c, "window.width") = 1280;
 	ensure_path(c, "window.height") = 720;
+	ensure_path(c, "window.fullscreen") = false;
+	ensure_path(c, "fullscreen.width") = 1920;
+	ensure_path(c, "fullscreen.height") = 1080;
 	ensure_path(c, "ui.theme") = "dark";
 	size_t overrides = apply_env_overrides(c);
 	(void)overrides; // no logging

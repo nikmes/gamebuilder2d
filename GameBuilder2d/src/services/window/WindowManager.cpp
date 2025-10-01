@@ -13,6 +13,7 @@
 #include <memory>
 #include <nlohmann/json.hpp>
 #include "services/logger/LogManager.h"
+#include "services/configuration/ConfigurationManager.h"
 // ImGuiColorTextEdit
 #include <TextEditor.h>
 #include <functional>
@@ -21,6 +22,7 @@
 #include "ui/WindowContext.h"
 #include "ui/Windows/ConsoleLogWindow.h"
 // New modular windows
+#include "ui/FullscreenSession.h"
 #include "ui/Windows/CodeEditorWindow.h"
 #include "ui/Windows/FilePreviewWindow.h"
 #include "ui/Windows/GameWindow.h"
@@ -74,6 +76,10 @@ WindowManager::WindowManager() {
 }
 WindowManager::~WindowManager() {
     shutdown();
+}
+
+void WindowManager::setFullscreenSession(FullscreenSession* session) {
+    fullscreen_session_ = session;
 }
 
 void WindowManager::shutdown() {
@@ -755,6 +761,7 @@ void WindowManager::renderUI() {
                 ctx.requestFocus = [this,&w]() { this->focus_request_window_id_ = w.id; };
                 ctx.requestUndock = [this,&w]() { this->undock_requests_.insert(w.id); };
                 ctx.requestClose = [this,&w]() { this->cleanupPreview(w.id); this->closeWindow(w.id); };
+                ctx.fullscreen = fullscreen_session_;
                 // TODO: wire services into ctx as they are extracted
                 w.impl->render(ctx);
             } else {
@@ -910,6 +917,13 @@ void WindowManager::buildDefaultLayoutIfNeeded() {
     if (!findByTypeId("console-log")) {
         std::string id = spawnWindowByType("console-log", std::string("Console"));
         (void)id;
+    }
+
+    if (ConfigurationManager::getBool("window::resume_fullscreen", false)) {
+        if (!findByTypeId("game-window")) {
+            std::string id = spawnWindowByType("game-window", std::string("Game Window"));
+            (void)id;
+        }
     }
 
     // Build dock layout: split root into left (Scene), right (Inspector), bottom (Console)

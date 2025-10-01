@@ -18,6 +18,8 @@
 
 namespace gb2d {
 
+class FullscreenSession;
+
 class WindowManager {
 public:
     WindowManager();
@@ -42,6 +44,8 @@ public:
 
     // Render ImGui-based UI elements (docking, tabs to be implemented later)
     void renderUI();
+
+    void setFullscreenSession(FullscreenSession* session);
 
     std::string createWindow(const std::string& title, std::optional<Size> initialSize = std::nullopt);
     // New: spawn a window by registered type. Returns empty string on failure.
@@ -113,6 +117,8 @@ private:
 
     // Modular windows registry (scaffolding; will be used as windows are migrated)
     WindowRegistry window_registry_{};
+
+    FullscreenSession* fullscreen_session_{nullptr};
 };
 
 } // namespace gb2d
