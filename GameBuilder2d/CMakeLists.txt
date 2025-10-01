@@ -56,10 +56,26 @@ add_executable (GameBuilder2d
   "src/games/PlarformerGame.cpp"
 )
 
+# Ensure a baseline config.json is available in the build tree
+configure_file(
+  "${CMAKE_SOURCE_DIR}/config.json"
+  "${CMAKE_BINARY_DIR}/config.json"
+  COPYONLY
+)
+
 set_property(TARGET GameBuilder2d PROPERTY CXX_STANDARD 20)
 target_compile_options(GameBuilder2d PRIVATE
   $<$<CXX_COMPILER_ID:MSVC>:/FI"${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/ImGuiColorTextEdit/imgui_compat_shim.h">
   $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-include ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/ImGuiColorTextEdit/imgui_compat_shim.h>
+)
+
+# Copy config.json next to the built executable for first-run defaults
+add_custom_command(
+  TARGET GameBuilder2d POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "${CMAKE_SOURCE_DIR}/config.json"
+          "$<TARGET_FILE_DIR:GameBuilder2d>/config.json"
+  COMMENT "Copying default config.json to output directory"
 )
 
 include(FetchContent)
