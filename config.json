@@ -11,9 +11,7 @@
   "version": 1,
   "window": {
     "fullscreen": false,
-    "fullscreen_last_game": "",
     "height": 1080,
-    "resume_fullscreen": false,
     "width": 1920
   }
 }

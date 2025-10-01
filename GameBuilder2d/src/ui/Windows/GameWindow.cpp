@@ -1,7 +1,6 @@
 #include "ui/Windows/GameWindow.h"
 #include "ui/WindowContext.h"
 #include "ui/FullscreenSession.h"
-#include "services/configuration/ConfigurationManager.h"
 #include "games/Game.h"
 #include "games/SpaceInvaders.h"
 #include "games/Galaga.h"
@@ -116,9 +115,6 @@ void GameWindow::switchGame(int index) {
     current_game_index_ = index;
     game_needs_init_ = true;
     ensureGameInitialized();
-    if (syncResumePreferenceGameId()) {
-        ConfigurationManager::save();
-    }
 }
 
 void GameWindow::resetCurrentGame() {
@@ -142,18 +138,6 @@ void GameWindow::render(WindowContext& ctx) {
     ensureGameSelected();
     ensureGameInitialized();
 
-    if (!resume_pref_checked_) {
-        resume_pref_checked_ = true;
-        resume_pref_enabled_ = ConfigurationManager::getBool("window::resume_fullscreen", false);
-        resume_pref_last_game_ = ConfigurationManager::getString("window::fullscreen_last_game", "");
-        if (resume_pref_enabled_) {
-            resume_pref_autostart_pending_ = true;
-            if (!resume_pref_last_game_.empty() && resume_pref_last_game_ != currentGameId()) {
-                setGameById(resume_pref_last_game_);
-            }
-        }
-    }
-
     // Toolbar: game selection + reset
     if (!games_.empty()) {
         std::vector<const char*> names;
@@ -173,15 +157,6 @@ void GameWindow::render(WindowContext& ctx) {
         bool sessionActive = hasSession && ctx.fullscreen->isActive();
         bool canRequestFullscreen = (current_game_ != nullptr) && hasSession && !sessionActive;
 
-        if (resume_pref_autostart_pending_) {
-            if (canRequestFullscreen) {
-                fullscreen_requested_ = true;
-                resume_pref_autostart_pending_ = false;
-            } else if (sessionActive) {
-                resume_pref_autostart_pending_ = false;
-            }
-        }
-
         if (!canRequestFullscreen) {
             ImGui::BeginDisabled();
         }
@@ -195,29 +170,10 @@ void GameWindow::render(WindowContext& ctx) {
         if (sessionActive) {
             ImGui::TextUnformatted("Press Ctrl+W or Esc to exit");
             if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("Leaving fullscreen returns to the editor. Enable resume to auto-start this game on next launch.");
+                ImGui::SetTooltip("Leaving fullscreen returns to the editor.");
             }
         } else {
             ImGui::TextDisabled("Use game controls (e.g. arrows + space)");
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("Enable resume to re-enter fullscreen automatically when the editor starts.");
-            }
-        }
-
-        bool resumePref = resume_pref_enabled_;
-        if (ImGui::Checkbox("Resume fullscreen on launch", &resumePref)) {
-            resume_pref_enabled_ = resumePref;
-            ConfigurationManager::set("window::resume_fullscreen", resume_pref_enabled_);
-            if (resume_pref_enabled_) {
-                syncResumePreferenceGameId();
-            } else {
-                clearResumePreferenceGameId();
-                resume_pref_autostart_pending_ = false;
-            }
-            ConfigurationManager::save();
-        }
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("When enabled, the editor will re-enter fullscreen using the last played game on startup.");
         }
 
         ImGui::Separator();
@@ -248,11 +204,7 @@ void GameWindow::render(WindowContext& ctx) {
     if (fullscreen_requested_) {
         if (ctx.fullscreen && current_game_) {
             fullscreen_requested_ = false;
-            resume_pref_autostart_pending_ = false;
             ctx.fullscreen->setResetHook([this]() { this->handleFullscreenExit(); });
-            if (resume_pref_enabled_ && syncResumePreferenceGameId()) {
-                ConfigurationManager::save();
-            }
             ctx.fullscreen->requestStart(*current_game_, currentGameId(), rt_w_, rt_h_);
         }
     }
@@ -329,24 +281,6 @@ std::vector<std::pair<std::string, std::string>> GameWindow::availableGames() {
 
 void GameWindow::handleFullscreenExit() {
     game_needs_init_ = true;
-}
-
-bool GameWindow::syncResumePreferenceGameId() {
-    if (!resume_pref_checked_ || !resume_pref_enabled_) return false;
-    std::string id = currentGameId();
-    if (id.empty()) return false;
-    if (id == resume_pref_last_game_) return false;
-    resume_pref_last_game_ = std::move(id);
-    ConfigurationManager::set("window::fullscreen_last_game", resume_pref_last_game_);
-    return true;
-}
-
-bool GameWindow::clearResumePreferenceGameId() {
-    if (!resume_pref_checked_) return false;
-    if (resume_pref_last_game_.empty()) return false;
-    resume_pref_last_game_.clear();
-    ConfigurationManager::set("window::fullscreen_last_game", std::string());
-    return true;
 }
 
 } // namespace gb2d

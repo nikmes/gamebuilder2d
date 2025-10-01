@@ -49,8 +49,6 @@ private:
     void resetCurrentGame();
     void ensureGameInitialized();
     void handleFullscreenExit();
-    bool syncResumePreferenceGameId();
-    bool clearResumePreferenceGameId();
 
     std::string title_ { "Game Window" };
     RenderTexture2D rt_{};
@@ -62,10 +60,6 @@ private:
     std::unique_ptr<games::Game> current_game_{};
     bool game_needs_init_{false};
     bool fullscreen_requested_{false};
-    bool resume_pref_checked_{false};
-    bool resume_pref_enabled_{false};
-    bool resume_pref_autostart_pending_{false};
-    std::string resume_pref_last_game_{};
 };
 
 } // namespace gb2d
