@@ -22,6 +22,16 @@ public:
     void reset(int width, int height) override;
 
 private:
+    struct SoundAsset {
+        std::string key;
+        bool placeholder{true};
+    };
+
+    void loadAudioAssets();
+    void releaseAudioAssets();
+    void playSound(const SoundAsset& asset, float volume = 1.0f, float pan = 0.5f);
+    float panForWorldX(float worldX) const;
+
     enum class GhostMode { Scatter, Chase, Frightened, Returning };
 
     struct Ghost {
@@ -85,6 +95,15 @@ private:
     std::vector<Ghost> ghosts_{};
     float globalModeTimer_{7.0f};
     bool scatterPhase_{true};
+
+    SoundAsset sfx_pellet_{};
+    SoundAsset sfx_power_pellet_{};
+    SoundAsset sfx_ghost_eaten_{};
+    SoundAsset sfx_pacman_death_{};
+    SoundAsset sfx_victory_{};
+    SoundAsset sfx_game_over_{};
+    bool victory_cue_played_{false};
+    bool game_over_cue_played_{false};
 };
 
 } // namespace gb2d::games

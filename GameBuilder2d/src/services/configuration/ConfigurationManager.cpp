@@ -242,6 +242,16 @@ void ConfigurationManager::loadOrDefault() {
 	ensure_path(c, "textures.generate_mipmaps") = false;
 	ensure_path(c, "textures.max_bytes") = 0;
 	ensure_path(c, "textures.placeholder_path") = "";
+	ensure_path(c, "audio.enabled") = true;
+	ensure_path(c, "audio.master_volume") = 1.0;
+	ensure_path(c, "audio.music_volume") = 1.0;
+	ensure_path(c, "audio.sfx_volume") = 1.0;
+	ensure_path(c, "audio.max_concurrent_sounds") = 16;
+	auto& audioSearch = ensure_path(c, "audio.search_paths");
+	audioSearch = json::array();
+	audioSearch.push_back("assets/audio");
+	ensure_path(c, "audio.preload_sounds") = json::array();
+	ensure_path(c, "audio.preload_music") = json::array();
 	size_t overrides = apply_env_overrides(c);
 	(void)overrides; // no logging
 }

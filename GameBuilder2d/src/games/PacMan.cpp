@@ -1,4 +1,6 @@
 #include "games/PacMan.h"
+#include "services/audio/AudioManager.h"
+#include "services/logger/LogManager.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -68,6 +70,7 @@ constexpr std::array<Vector2, 4> kDirections = { DIR_RIGHT, DIR_LEFT, DIR_UP, DI
 } // namespace
 
 void PacMan::init(int width, int height) {
+    loadAudioAssets();
     setup(width, height);
 }
 
@@ -97,6 +100,7 @@ void PacMan::onResize(int width, int height) {
 void PacMan::unload() {
     grid_.clear();
     ghosts_.clear();
+    releaseAudioAssets();
 }
 
 void PacMan::setup(int width, int height) {
@@ -115,6 +119,8 @@ void PacMan::setup(int width, int height) {
     gameOver_ = false;
     powerTimer_ = 0.0f;
     deathTimer_ = 0.0f;
+    victory_cue_played_ = false;
+    game_over_cue_played_ = false;
 
     scatterPhase_ = true;
     globalModeTimer_ = 7.0f;
@@ -212,6 +218,15 @@ void PacMan::update(float dt, int width, int height, bool acceptInput) {
     }
 
     powerTimer_ = std::max(0.0f, powerTimer_ - dt);
+
+    if (victory_ && !victory_cue_played_) {
+        playSound(sfx_victory_, 1.0f, panForWorldX(pacmanPos_.x));
+        victory_cue_played_ = true;
+    }
+    if (gameOver_ && !game_over_cue_played_) {
+        playSound(sfx_game_over_, 1.0f, panForWorldX(pacmanPos_.x));
+        game_over_cue_played_ = true;
+    }
 }
 
 void PacMan::updatePacman(float dt, bool acceptInput) {
@@ -372,12 +387,14 @@ void PacMan::handlePellets() {
         tile = ' ';
         score_ += 10;
         pelletsRemaining_ = std::max(0, pelletsRemaining_ - 1);
+        playSound(sfx_pellet_, 0.6f, panForWorldX(pacmanPos_.x));
     } else if (tile == 'o') {
         tile = ' ';
         score_ += 50;
         pelletsRemaining_ = std::max(0, pelletsRemaining_ - 1);
         powerTimer_ = 6.0f;
         enterFrightenedMode();
+        playSound(sfx_power_pellet_, 0.9f, panForWorldX(pacmanPos_.x));
     }
 }
 
@@ -401,6 +418,7 @@ void PacMan::handleCollisions() {
                 ghost.eyesOnly = true;
                 ghost.frightenedTimer = 0.0f;
                 score_ += 200;
+                playSound(sfx_ghost_eaten_, 0.9f, panForWorldX(ghost.pos.x));
             } else if (ghost.mode != GhostMode::Returning) {
                 pacmanAlive_ = false;
                 pacmanDir_ = {0.0f, 0.0f};
@@ -413,6 +431,7 @@ void PacMan::handleCollisions() {
                 if (lives_ <= 0) {
                     gameOver_ = true;
                 }
+                playSound(sfx_pacman_death_, 1.0f, panForWorldX(pacmanPos_.x));
                 break;
             }
         }
@@ -504,6 +523,87 @@ void PacMan::render(int /*width*/, int /*height*/) {
         int w = MeasureText(msg, 22);
         DrawText(msg, width_ / 2 - w / 2, static_cast<int>(offset_.y) - 26, 22, Color{120, 210, 255, 255});
     }
+}
+
+void PacMan::loadAudioAssets() {
+    using gb2d::audio::AudioManager;
+    using gb2d::logging::LogManager;
+
+    struct AssetConfig {
+        const char* identifier;
+        const char* alias;
+        SoundAsset* slot;
+    };
+
+    const std::array<AssetConfig, 6> assets{ {
+        {"pacman/pellet.wav", "game/pacman/pellet", &sfx_pellet_},
+        {"pacman/power_pellet.wav", "game/pacman/power-pellet", &sfx_power_pellet_},
+        {"pacman/ghost_eaten.wav", "game/pacman/ghost-eaten", &sfx_ghost_eaten_},
+        {"pacman/pacman_death.wav", "game/pacman/death", &sfx_pacman_death_},
+        {"pacman/victory.wav", "game/pacman/victory", &sfx_victory_},
+        {"pacman/game_over.wav", "game/pacman/game-over", &sfx_game_over_}
+    } };
+
+    for (const auto& asset : assets) {
+        if (!asset.slot->key.empty()) {
+            continue;
+        }
+        auto result = AudioManager::acquireSound(asset.identifier, asset.alias);
+        asset.slot->key = result.key;
+        asset.slot->placeholder = result.placeholder;
+        if (result.key.empty()) {
+            LogManager::warn("PacMan audio failed to acquire '{}'", asset.identifier);
+        } else if (result.placeholder) {
+            LogManager::debug("PacMan audio '{}' using placeholder", asset.identifier);
+        } else {
+            LogManager::debug("PacMan audio '{}' ready (key='{}')", asset.identifier, result.key);
+        }
+    }
+}
+
+void PacMan::releaseAudioAssets() {
+    using gb2d::audio::AudioManager;
+    using gb2d::logging::LogManager;
+
+    std::array<SoundAsset*, 6> slots{ {
+        &sfx_pellet_,
+        &sfx_power_pellet_,
+        &sfx_ghost_eaten_,
+        &sfx_pacman_death_,
+        &sfx_victory_,
+        &sfx_game_over_
+    } };
+
+    for (auto* slot : slots) {
+        if (slot->key.empty()) {
+            continue;
+        }
+        if (!AudioManager::releaseSound(slot->key)) {
+            LogManager::warn("PacMan audio failed to release '{}'", slot->key);
+        }
+        slot->key.clear();
+        slot->placeholder = true;
+    }
+}
+
+void PacMan::playSound(const SoundAsset& asset, float volume, float pan) {
+    if (asset.key.empty() || asset.placeholder) {
+        return;
+    }
+    gb2d::audio::PlaybackParams params;
+    params.volume = volume;
+    params.pan = std::clamp(pan, 0.0f, 1.0f);
+    gb2d::audio::AudioManager::playSound(asset.key, params);
+}
+
+float PacMan::panForWorldX(float worldX) const {
+    int cols = std::max(1, gridWidth());
+    float span = static_cast<float>(tileSize_ * cols);
+    if (span <= 0.0f) {
+        return 0.5f;
+    }
+    float normalized = (worldX - offset_.x) / span;
+    return std::clamp(normalized, 0.0f, 1.0f);
 }
 
 int PacMan::gridWidth() const {

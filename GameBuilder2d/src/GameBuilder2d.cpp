@@ -13,6 +13,7 @@
 #include "services/configuration/ConfigurationManager.h"
 #include "services/logger/LogManager.h"
 #include "services/texture/TextureManager.h"
+#include "services/audio/AudioManager.h"
 
 using namespace std;
 
@@ -24,7 +25,9 @@ int main()
     gb2d::logging::LogManager::init({"GameBuilder2d", gb2d::logging::Level::info, "[%H:%M:%S] [%^%l%$] %v"});
     gb2d::logging::LogManager::info("Starting GameBuilder2d");
     bool configLoaded = gb2d::ConfigurationManager::load();
-    if (!configLoaded) {
+
+    if (!configLoaded) 
+    {
         gb2d::logging::LogManager::warn("Configuration file missing or invalid; using defaults");
     }
 
@@ -77,6 +80,7 @@ int main()
     rlImGuiSetup(true);
 
     gb2d::textures::TextureManager::init();
+    gb2d::audio::AudioManager::init();
 
     // Enable docking in ImGui (after context is created)
     ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_DockingEnable;
@@ -87,7 +91,8 @@ int main()
 
     while (!WindowShouldClose())
     {
-        float dt = GetFrameTime();
+    float dt = GetFrameTime();
+    gb2d::audio::AudioManager::tick(dt);
         BeginDrawing();
 
         if (fullscreenSession.isActive()) {
@@ -119,6 +124,7 @@ int main()
     // Save layout before shutting down ImGui
     fullscreenSession.requestStop();
     wm.saveLayout();
+    gb2d::audio::AudioManager::shutdown();
     gb2d::textures::TextureManager::shutdown();
     rlImGuiShutdown();
     CloseWindow();

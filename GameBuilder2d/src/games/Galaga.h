@@ -1,6 +1,7 @@
 #pragma once
 #include "games/Game.h"
 #include <array>
+#include <string>
 #include <vector>
 #include <raylib.h>
 
@@ -22,6 +23,16 @@ public:
     void reset(int width, int height) override;
 
 private:
+    struct SoundAsset {
+        std::string key;
+        bool placeholder{true};
+    };
+
+    void loadAudioAssets();
+    void releaseAudioAssets();
+    void playSound(const SoundAsset& asset, float volume = 1.0f, float pan = 0.5f);
+    float panForX(float worldX) const;
+
     struct Shot {
         Vector2 pos{};
         Vector2 vel{};
@@ -94,6 +105,14 @@ private:
     int score_{0};
     bool victory_{false};
     bool game_over_{false};
+
+    SoundAsset sfx_player_shot_{};
+    SoundAsset sfx_enemy_down_{};
+    SoundAsset sfx_player_hit_{};
+    SoundAsset sfx_victory_{};
+    SoundAsset sfx_game_over_{};
+    bool victory_cue_played_{false};
+    bool game_over_cue_played_{false};
 };
 
 } // namespace gb2d::games

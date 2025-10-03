@@ -1,4 +1,6 @@
 #include "games/HarrierAttack.h"
+#include "services/audio/AudioManager.h"
+#include "services/logger/LogManager.h"
 #include <algorithm>
 #include <cmath>
 #include <string>
@@ -80,9 +82,12 @@ void HarrierAttack::rebuildEntities() {
     score_ = 0;
     statusMessageTimer_ = 0.0f;
     statusMessage_.clear();
+    mission_success_cue_played_ = false;
+    mission_fail_cue_played_ = false;
 }
 
 void HarrierAttack::init(int width, int height) {
+    loadAudioAssets();
     configureWorld(width, height);
     rebuildEntities();
 }
@@ -103,6 +108,7 @@ void HarrierAttack::unload() {
     enemyJets_.clear();
     enemyShots_.clear();
     groundTargets_.clear();
+    releaseAudioAssets();
 }
 
 void HarrierAttack::update(float dt, int width, int height, bool acceptInput) {
@@ -146,6 +152,15 @@ void HarrierAttack::update(float dt, int width, int height, bool acceptInput) {
     }
 
     player_.invuln = std::max(0.0f, player_.invuln - dt);
+
+    if (player_.missionComplete && !mission_success_cue_played_) {
+        playSound(sfx_mission_success_, 1.0f, panForWorldX(player_.pos.x));
+        mission_success_cue_played_ = true;
+    }
+    if (missionFailed_ && !mission_fail_cue_played_) {
+        playSound(sfx_mission_fail_, 1.0f, panForWorldX(player_.pos.x));
+        mission_fail_cue_played_ = true;
+    }
 }
 
 void HarrierAttack::updatePlayer(float dt, bool acceptInput) {
@@ -168,6 +183,7 @@ void HarrierAttack::updatePlayer(float dt, bool acceptInput) {
             bombs_.push_back(bomb);
             player_.bombs -= 1;
             player_.bombCooldown = 0.35f;
+            playSound(sfx_bomb_drop_, 0.8f, panForWorldX(player_.pos.x));
         }
         if ((IsKeyDown(KEY_X) || IsKeyDown(KEY_RIGHT_CONTROL)) && player_.rocketCooldown <= 0.0f && player_.rockets > 0) {
             Rocket rocket;
@@ -176,6 +192,7 @@ void HarrierAttack::updatePlayer(float dt, bool acceptInput) {
             rockets_.push_back(rocket);
             player_.rockets -= 1;
             player_.rocketCooldown = 0.65f;
+            playSound(sfx_rocket_fire_, 0.9f, panForWorldX(player_.pos.x));
         }
     }
 
@@ -319,6 +336,8 @@ void HarrierAttack::handleCollisions() {
                 target.alive = false;
                 score_ += 500;
                 setStatusMessage("Target destroyed", 1.6f);
+                float targetCenterX = target.rect.x + target.rect.width * 0.5f;
+                playSound(sfx_explosion_, 1.0f, panForWorldX(targetCenterX));
                 break;
             }
         }
@@ -333,6 +352,7 @@ void HarrierAttack::handleCollisions() {
                 jet.alive = false;
                 score_ += 200;
                 setStatusMessage("Enemy jet down", 1.6f);
+                playSound(sfx_explosion_, 1.0f, panForWorldX(jet.pos.x));
                 break;
             }
         }
@@ -345,6 +365,7 @@ void HarrierAttack::handleCollisions() {
                 player_.alive = false;
                 missionFailed_ = true;
                 setStatusMessage("Hit by enemy fire", 2.5f);
+                playSound(sfx_player_hit_, 1.0f, panForWorldX(player_.pos.x));
                 break;
             }
         }
@@ -357,6 +378,7 @@ void HarrierAttack::handleCollisions() {
                 player_.alive = false;
                 missionFailed_ = true;
                 setStatusMessage("Collision with enemy jet", 2.5f);
+                playSound(sfx_player_hit_, 1.0f, panForWorldX(player_.pos.x));
                 break;
             }
         }
@@ -367,6 +389,7 @@ void HarrierAttack::handleCollisions() {
             player_.alive = false;
             missionFailed_ = true;
             setStatusMessage("Aircraft lost", 2.5f);
+            playSound(sfx_player_hit_, 1.0f, panForWorldX(player_.pos.x));
         }
     }
 }
@@ -495,6 +518,87 @@ void HarrierAttack::render(int width, int height) {
         int msgWidth = MeasureText(msg, 28);
         DrawText(msg, width_ / 2 - msgWidth / 2, height_ / 2 - 20, 28, Color{ 255, 120, 120, 255 });
     }
+}
+
+void HarrierAttack::loadAudioAssets() {
+    using gb2d::audio::AudioManager;
+    using gb2d::logging::LogManager;
+
+    struct AssetConfig {
+        const char* identifier;
+        const char* alias;
+        SoundAsset* slot;
+    };
+
+    const std::array<AssetConfig, 6> assets{ {
+        {"harrier/bomb_drop.wav", "game/harrier/bomb-drop", &sfx_bomb_drop_},
+        {"harrier/rocket_fire.wav", "game/harrier/rocket-fire", &sfx_rocket_fire_},
+        {"harrier/explosion.wav", "game/harrier/explosion", &sfx_explosion_},
+        {"harrier/player_hit.wav", "game/harrier/player-hit", &sfx_player_hit_},
+        {"harrier/mission_success.wav", "game/harrier/mission-success", &sfx_mission_success_},
+        {"harrier/mission_fail.wav", "game/harrier/mission-fail", &sfx_mission_fail_}
+    } };
+
+    for (const auto& asset : assets) {
+        if (!asset.slot->key.empty()) {
+            continue;
+        }
+        auto result = AudioManager::acquireSound(asset.identifier, asset.alias);
+        asset.slot->key = result.key;
+        asset.slot->placeholder = result.placeholder;
+        if (result.key.empty()) {
+            LogManager::warn("HarrierAttack audio failed to acquire '{}'", asset.identifier);
+        } else if (result.placeholder) {
+            LogManager::debug("HarrierAttack audio '{}' using placeholder", asset.identifier);
+        } else {
+            LogManager::debug("HarrierAttack audio '{}' ready (key='{}')", asset.identifier, result.key);
+        }
+    }
+}
+
+void HarrierAttack::releaseAudioAssets() {
+    using gb2d::audio::AudioManager;
+    using gb2d::logging::LogManager;
+
+    std::array<SoundAsset*, 6> slots{ {
+        &sfx_bomb_drop_,
+        &sfx_rocket_fire_,
+        &sfx_explosion_,
+        &sfx_player_hit_,
+        &sfx_mission_success_,
+        &sfx_mission_fail_
+    } };
+
+    for (auto* slot : slots) {
+        if (slot->key.empty()) {
+            continue;
+        }
+        if (!AudioManager::releaseSound(slot->key)) {
+            LogManager::warn("HarrierAttack audio failed to release '{}'", slot->key);
+        }
+        slot->key.clear();
+        slot->placeholder = true;
+    }
+}
+
+void HarrierAttack::playSound(const SoundAsset& asset, float volume, float pan) {
+    if (asset.key.empty() || asset.placeholder) {
+        return;
+    }
+    gb2d::audio::PlaybackParams params;
+    params.volume = volume;
+    params.pan = std::clamp(pan, 0.0f, 1.0f);
+    gb2d::audio::AudioManager::playSound(asset.key, params);
+}
+
+float HarrierAttack::panForWorldX(float worldX) const {
+    if (width_ <= 0) {
+        return 0.5f;
+    }
+    float cam = cameraX();
+    float screenX = worldX - cam;
+    float normalized = screenX / static_cast<float>(width_);
+    return std::clamp(normalized, 0.0f, 1.0f);
 }
 
 } // namespace gb2d::games

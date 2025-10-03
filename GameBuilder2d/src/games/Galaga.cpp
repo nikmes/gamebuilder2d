@@ -1,4 +1,6 @@
 #include "games/Galaga.h"
+#include "services/audio/AudioManager.h"
+#include "services/logger/LogManager.h"
 #include <algorithm>
 #include <cmath>
 #include <raymath.h>
@@ -25,6 +27,7 @@ float Galaga::randomFloat(float minValue, float maxValue) {
 }
 
 void Galaga::init(int width, int height) {
+    loadAudioAssets();
     setup(width, height);
 }
 
@@ -41,6 +44,7 @@ void Galaga::unload() {
     enemy_bullets_.clear();
     enemies_.clear();
     stars_.clear();
+    releaseAudioAssets();
 }
 
 void Galaga::setup(int width, int height) {
@@ -66,6 +70,8 @@ void Galaga::setup(int width, int height) {
     score_ = 0;
     victory_ = false;
     game_over_ = false;
+    victory_cue_played_ = false;
+    game_over_cue_played_ = false;
 }
 
 void Galaga::setupFormation() {
@@ -180,6 +186,15 @@ void Galaga::update(float dt, int width, int height, bool acceptInput) {
         updatePlayer(dt, false);
         updateEnemyBullets(dt);
     }
+
+    if (victory_ && !victory_cue_played_) {
+        playSound(sfx_victory_, 1.0f);
+        victory_cue_played_ = true;
+    }
+    if (game_over_ && !game_over_cue_played_) {
+        playSound(sfx_game_over_, 1.0f);
+        game_over_cue_played_ = true;
+    }
 }
 
 void Galaga::updatePlayer(float dt, bool acceptInput) {
@@ -213,6 +228,7 @@ void Galaga::updatePlayer(float dt, bool acceptInput) {
             shot.vel = { 0.0f, -480.0f };
             player_bullets_.push_back(shot);
             player_.cooldown = 0.18f;
+            playSound(sfx_player_shot_, 0.8f, panForX(player_.pos.x));
         }
     }
 }
@@ -381,6 +397,7 @@ void Galaga::handleCollisions() {
                     shot.alive = false;
                     enemy.alive = false;
                     score_ += 150 + enemy.row * 60;
+                    playSound(sfx_enemy_down_, 0.85f, panForX(enemy.pos.x));
                     break;
                 }
             }
@@ -422,6 +439,7 @@ void Galaga::handlePlayerHit() {
     player_.lives -= 1;
     player_bullets_.clear();
     player_.pos = { width_ * 0.5f, height_ - 60.0f };
+    playSound(sfx_player_hit_, 1.0f, panForX(player_.pos.x));
     if (player_.lives <= 0) {
         player_.alive = false;
         game_over_ = true;
@@ -505,6 +523,76 @@ void Galaga::render(int width, int height)
         int textWidth = MeasureText(msg, 24);
         DrawText(msg, width_ / 2 - textWidth / 2, height_ / 2 - 20, 24, RED);
     }
+}
+
+void Galaga::loadAudioAssets() {
+    using gb2d::audio::AudioManager;
+    using gb2d::logging::LogManager;
+
+    struct AssetConfig {
+        const char* identifier;
+        const char* alias;
+        SoundAsset* slot;
+    };
+
+    const std::array<AssetConfig, 5> assets{ {
+        {"galaga/player_shot.wav", "game/galaga/player-shot", &sfx_player_shot_},
+        {"galaga/enemy_down.wav", "game/galaga/enemy-down", &sfx_enemy_down_},
+        {"galaga/player_hit.wav", "game/galaga/player-hit", &sfx_player_hit_},
+        {"galaga/victory.wav", "game/galaga/victory", &sfx_victory_},
+        {"galaga/game_over.wav", "game/galaga/game-over", &sfx_game_over_}
+    } };
+
+    for (const auto& asset : assets) {
+        if (!asset.slot->key.empty()) {
+            continue;
+        }
+        auto result = AudioManager::acquireSound(asset.identifier, asset.alias);
+        asset.slot->key = result.key;
+        asset.slot->placeholder = result.placeholder;
+        if (result.key.empty()) {
+            LogManager::warn("Galaga audio failed to acquire '{}'", asset.identifier);
+        } else if (result.placeholder) {
+            LogManager::debug("Galaga audio '{}' using placeholder", asset.identifier);
+        } else {
+            LogManager::debug("Galaga audio '{}' ready (key='{}')", asset.identifier, result.key);
+        }
+    }
+}
+
+void Galaga::releaseAudioAssets() {
+    using gb2d::audio::AudioManager;
+    using gb2d::logging::LogManager;
+
+    std::array<SoundAsset*, 5> slots{ {&sfx_player_shot_, &sfx_enemy_down_, &sfx_player_hit_, &sfx_victory_, &sfx_game_over_} };
+    for (auto* slot : slots) {
+        if (slot->key.empty()) {
+            continue;
+        }
+        if (!AudioManager::releaseSound(slot->key)) {
+            LogManager::warn("Galaga audio failed to release '{}'", slot->key);
+        }
+        slot->key.clear();
+        slot->placeholder = true;
+    }
+}
+
+void Galaga::playSound(const SoundAsset& asset, float volume, float pan) {
+    if (asset.key.empty() || asset.placeholder) {
+        return;
+    }
+    gb2d::audio::PlaybackParams params;
+    params.volume = volume;
+    params.pan = std::clamp(pan, 0.0f, 1.0f);
+    gb2d::audio::AudioManager::playSound(asset.key, params);
+}
+
+float Galaga::panForX(float worldX) const {
+    if (width_ <= 0) {
+        return 0.5f;
+    }
+    float normalized = worldX / static_cast<float>(width_);
+    return std::clamp(normalized, 0.0f, 1.0f);
 }
 
 } // namespace gb2d::games

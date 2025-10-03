@@ -24,6 +24,16 @@ public:
     void reset(int width, int height) override;
 
 private:
+    struct SoundAsset {
+        std::string key;
+        bool placeholder{true};
+    };
+
+    void loadAudioAssets();
+    void releaseAudioAssets();
+    void playSound(const SoundAsset& asset, float volume = 1.0f, float pan = 0.5f);
+    float panForWorldX(float worldX) const;
+
     struct Difficulty {
         std::string label;
         float fuelConsumption;
@@ -121,6 +131,15 @@ private:
     bool missionFailed_{false};
     int score_{0};
     std::string statusMessage_{};
+
+    SoundAsset sfx_bomb_drop_{};
+    SoundAsset sfx_rocket_fire_{};
+    SoundAsset sfx_explosion_{};
+    SoundAsset sfx_player_hit_{};
+    SoundAsset sfx_mission_success_{};
+    SoundAsset sfx_mission_fail_{};
+    bool mission_success_cue_played_{false};
+    bool mission_fail_cue_played_{false};
 };
 
 } // namespace gb2d::games

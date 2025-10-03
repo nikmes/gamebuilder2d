@@ -121,6 +121,15 @@ On WSL, reconfigure with `-DBUILD_TESTING=ON` or use the `windows-vs2022-x64-rel
 
 👉 See the [TextureManager developer guide](GameBuilder2d/docs/texture-manager.md) for end‑to‑end examples, configuration tables, and the current roadmap.
 
+## AudioManager quickstart
+
+- `AudioManager::init()`/`shutdown()` already run during app bootstrap; call `AudioManager::tick()` each frame to keep music streams updated (wired in `GameBuilder2d.cpp`).
+- The `audio` block in `config.json` controls enablement, global volumes, alias slot limits, search paths, and optional preload lists for sounds and music.
+- Disabled or unavailable devices put the manager into silent mode—playback requests no-op but still resolve handles so callers can proceed safely.
+- Use `AudioManager::reloadAll()` after adjusting search paths or preload lists at runtime to refresh the caches.
+
+👉 See the [AudioManager configuration guide](GameBuilder2d/docs/audio-manager.md) for detailed key descriptions, defaults, and environment override examples.
+
 ## Dependencies
 
 - **raylib 5.5** (graphics/input) with GLFW extras disabled for faster builds

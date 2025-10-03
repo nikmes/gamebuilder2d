@@ -25,7 +25,7 @@ std::string configFilePath() {
 	if (const char* dir = std::getenv("GB2D_CONFIG_DIR"); dir && *dir) {
 		std::filesystem::path p(dir);
 		std::error_code ec; std::filesystem::create_directories(p, ec);
-		return (p / "config.json").string();
+		return (p / "../config.json").string();
 	}
 
 	// Search current working directory and parents for an existing config.json

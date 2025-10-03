@@ -1,11 +1,15 @@
 #include "games/SpaceInvaders.h"
+#include "services/audio/AudioManager.h"
+#include "services/logger/LogManager.h"
 #include <algorithm>
+#include <array>
 
 namespace gb2d::games {
 
 void SpaceInvaders::init(int width, int height) {
     width_ = width;
     height_ = height;
+    loadAudioAssets();
     rebuildArena(width_, height_);
 }
 
@@ -20,8 +24,8 @@ void SpaceInvaders::onResize(int width, int height) {
 }
 
 void SpaceInvaders::unload() {
-    player_.bullets.clear();
-    invaders_.clear();
+    clearGameState();
+    releaseAudioAssets();
 }
 
 void SpaceInvaders::update(float dt, int width, int height, bool acceptInput) {
@@ -37,12 +41,22 @@ void SpaceInvaders::update(float dt, int width, int height, bool acceptInput) {
         if (IsKeyDown(KEY_SPACE) && player_.cooldown <= 0.0f) {
             player_.bullets.push_back(Bullet{ { player_.pos.x, player_.pos.y - 12.0f }, -420.0f, true });
             player_.cooldown = 0.18f;
+            playSound(sfx_shot_, 0.9f);
         }
     }
 
     updateBullets(dt);
     updateInvaders(dt, width_);
     handleCollisions();
+
+    if (game_over_ && !played_game_over_cue_) {
+        playSound(sfx_game_over_, 0.9f);
+        played_game_over_cue_ = true;
+    }
+    if (game_won_ && !played_victory_cue_) {
+        playSound(sfx_victory_, 1.0f);
+        played_victory_cue_ = true;
+    }
 }
 
 void SpaceInvaders::render(int width, int height) {
@@ -56,9 +70,7 @@ void SpaceInvaders::render(int width, int height) {
 }
 
 void SpaceInvaders::rebuildArena(int width, int height) {
-    unload();
-    game_over_ = false;
-    game_won_ = false;
+    clearGameState();
     player_ = Player{};
     player_.pos = { width * 0.5f, height - 40.0f };
     player_.bullets.clear();
@@ -113,6 +125,7 @@ void SpaceInvaders::handleCollisions() {
             if (CheckCollisionPointRec(b.pos, inv.rect)) {
                 inv.alive = false;
                 b.alive = false;
+                playSound(sfx_hit_, 0.8f);
                 break;
             }
         }
@@ -120,6 +133,75 @@ void SpaceInvaders::handleCollisions() {
     bool anyAlive = false;
     for (auto& inv : invaders_) if (inv.alive) { anyAlive = true; break; }
     game_won_ = !anyAlive;
+}
+
+void SpaceInvaders::loadAudioAssets() {
+    using gb2d::audio::AudioManager;
+    using gb2d::logging::LogManager;
+
+    struct AssetConfig {
+        const char* identifier;
+        const char* alias;
+        SoundAsset* slot;
+    };
+
+    const std::array<AssetConfig, 4> assets{ {
+        {"spaceinvaders/shot.wav", "game/space-invaders/shot", &sfx_shot_},
+        {"spaceinvaders/hit.wav", "game/space-invaders/hit", &sfx_hit_},
+        {"spaceinvaders/game_over.wav", "game/space-invaders/game-over", &sfx_game_over_},
+        {"spaceinvaders/victory.wav", "game/space-invaders/victory", &sfx_victory_}
+    } };
+
+    for (const auto& asset : assets) {
+        if (!asset.slot->key.empty()) {
+            continue;
+        }
+        auto result = AudioManager::acquireSound(asset.identifier, asset.alias);
+        asset.slot->key = result.key;
+        asset.slot->placeholder = result.placeholder;
+        if (result.key.empty()) {
+            LogManager::warn("SpaceInvaders audio failed to acquire '{}'", asset.identifier);
+        } else if (result.placeholder) {
+            LogManager::debug("SpaceInvaders audio '{}' using placeholder", asset.identifier);
+        } else {
+            LogManager::debug("SpaceInvaders audio '{}' ready (key='{}')", asset.identifier, result.key);
+        }
+    }
+}
+
+void SpaceInvaders::releaseAudioAssets() {
+    using gb2d::audio::AudioManager;
+    using gb2d::logging::LogManager;
+
+    std::array<SoundAsset*, 4> slots{ {&sfx_shot_, &sfx_hit_, &sfx_game_over_, &sfx_victory_} };
+    for (auto* slot : slots) {
+        if (slot->key.empty()) {
+            continue;
+        }
+        if (!AudioManager::releaseSound(slot->key)) {
+            LogManager::warn("SpaceInvaders audio failed to release '{}'", slot->key);
+        }
+        slot->key.clear();
+        slot->placeholder = true;
+    }
+}
+
+void SpaceInvaders::clearGameState() {
+    player_.bullets.clear();
+    invaders_.clear();
+    game_over_ = false;
+    game_won_ = false;
+    played_game_over_cue_ = false;
+    played_victory_cue_ = false;
+}
+
+void SpaceInvaders::playSound(const SoundAsset& asset, float volume) {
+    if (asset.key.empty() || asset.placeholder) {
+        return;
+    }
+    gb2d::audio::PlaybackParams params;
+    params.volume = volume;
+    gb2d::audio::AudioManager::playSound(asset.key, params);
 }
 
 } // namespace gb2d::games

@@ -63,3 +63,18 @@ target_compile_definitions(texture_tests PRIVATE GB2D_INTERNAL_TESTING=1)
 
 include(Catch)
 catch_discover_tests(texture_tests)
+
+# Audio manager tests
+add_executable(audio_tests
+  test_bootstrap.cpp
+  unit/audio/test_audio_manager_playback.cpp
+)
+target_include_directories(audio_tests PRIVATE
+  ${CMAKE_SOURCE_DIR}/GameBuilder2d/src
+)
+target_link_libraries(audio_tests PRIVATE Catch2::Catch2WithMain gb2d_audio gb2d_configuration gb2d_logging)
+set_property(TARGET audio_tests PROPERTY CXX_STANDARD 20)
+target_compile_definitions(audio_tests PRIVATE GB2D_INTERNAL_TESTING=1)
+
+include(Catch)
+catch_discover_tests(audio_tests)

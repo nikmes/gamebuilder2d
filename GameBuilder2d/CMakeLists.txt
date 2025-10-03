@@ -69,6 +69,12 @@ target_compile_options(GameBuilder2d PRIVATE
   $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-include ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/ImGuiColorTextEdit/imgui_compat_shim.h>
 )
 
+# Run the executable from its output directory when debugging in Visual Studio so
+# the copied runtime assets (config.json, assets/) resolve via relative paths.
+set_target_properties(GameBuilder2d PROPERTIES
+  VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:GameBuilder2d>"
+)
+
 # Copy config.json next to the built executable for first-run defaults
 add_custom_command(
   TARGET GameBuilder2d POST_BUILD
@@ -77,6 +83,16 @@ add_custom_command(
           "$<TARGET_FILE_DIR:GameBuilder2d>/config.json"
   COMMENT "Copying default config.json to output directory"
 )
+
+if (EXISTS "${CMAKE_SOURCE_DIR}/assets")
+  add_custom_command(
+    TARGET GameBuilder2d POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_SOURCE_DIR}/assets"
+            "$<TARGET_FILE_DIR:GameBuilder2d>/assets"
+    COMMENT "Copying assets directory to output directory"
+  )
+endif()
 
 include(FetchContent)
 
@@ -126,6 +142,25 @@ if (EXISTS "${raylib_SOURCE_DIR}/CMakeLists.txt")
   file(READ "${raylib_SOURCE_DIR}/CMakeLists.txt" RAYLIB_CMAKELISTS)
   string(REPLACE "cmake_minimum_required(VERSION 3.5)" "cmake_minimum_required(VERSION 3.16...3.29)" RAYLIB_CMAKELISTS "${RAYLIB_CMAKELISTS}")
   file(WRITE "${raylib_SOURCE_DIR}/CMakeLists.txt" "${RAYLIB_CMAKELISTS}")
+endif()
+
+# Rename PlaySound symbol to avoid collision with WinMM on Windows; provide inline wrapper to keep API compatibility
+if (EXISTS "${raylib_SOURCE_DIR}/src/raylib.h")
+  file(READ "${raylib_SOURCE_DIR}/src/raylib.h" RAYLIB_HEADER_CONTENT)
+  if (RAYLIB_HEADER_CONTENT MATCHES "RLAPI void PlaySound\\(Sound sound\\);")
+    string(REPLACE "RLAPI void PlaySound(Sound sound);"
+                   "RLAPI void rlPlaySound(Sound sound);\nstatic inline void PlaySound(Sound sound) { rlPlaySound(sound); }"
+                   RAYLIB_HEADER_CONTENT "${RAYLIB_HEADER_CONTENT}")
+    file(WRITE "${raylib_SOURCE_DIR}/src/raylib.h" "${RAYLIB_HEADER_CONTENT}")
+  endif()
+endif()
+
+if (EXISTS "${raylib_SOURCE_DIR}/src/raudio.c")
+  file(READ "${raylib_SOURCE_DIR}/src/raudio.c" RAYLIB_AUDIO_CONTENT)
+  if (RAYLIB_AUDIO_CONTENT MATCHES "void PlaySound\\(Sound sound\\)")
+    string(REPLACE "void PlaySound(Sound sound)" "void rlPlaySound(Sound sound)" RAYLIB_AUDIO_CONTENT "${RAYLIB_AUDIO_CONTENT}")
+    file(WRITE "${raylib_SOURCE_DIR}/src/raudio.c" "${RAYLIB_AUDIO_CONTENT}")
+  endif()
 endif()
 add_subdirectory(${raylib_SOURCE_DIR} ${raylib_BINARY_DIR})
 
@@ -221,6 +256,15 @@ target_include_directories(gb2d_texture PUBLIC "src")
 set_property(TARGET gb2d_texture PROPERTY CXX_STANDARD 20)
 target_link_libraries(gb2d_texture PUBLIC raylib gb2d_configuration gb2d_logging)
 
+# Audio service library
+add_library(gb2d_audio
+  "src/services/audio/AudioManager.h"
+  "src/services/audio/AudioManager.cpp"
+)
+target_include_directories(gb2d_audio PUBLIC "src")
+set_property(TARGET gb2d_audio PROPERTY CXX_STANDARD 20)
+target_link_libraries(gb2d_audio PUBLIC raylib gb2d_configuration gb2d_logging)
+
 ## lwlog removed
 
 # ImGuiFileDialog
@@ -306,10 +350,6 @@ target_link_libraries(rlImGui PUBLIC raylib imgui)
 # Window library depends on ImGui, file dialog, and raylib
 target_link_libraries(gb2d_window PUBLIC imgui imguifiledialog raylib gb2d_logging imguicolortextedit nlohmann_json::nlohmann_json)
 
-target_link_libraries(GameBuilder2d PRIVATE raylib rlImGui imgui imguifiledialog gb2d_configuration gb2d_window gb2d_logging gb2d_texture)
-
-if (WIN32)
-  target_link_libraries(GameBuilder2d PRIVATE winmm)
-endif()
+target_link_libraries(GameBuilder2d PRIVATE raylib rlImGui imgui imguifiledialog gb2d_configuration gb2d_window gb2d_logging gb2d_texture gb2d_audio)
 
 # TODO: Add tests and install targets if needed.
