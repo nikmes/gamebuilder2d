@@ -52,4 +52,21 @@ Lists use the same semicolon-separated syntax as other services. Overrides are r
 
 Calling `ConfigurationManager::reload()` or hot-editing `config.json` while the tool is running re-applies master/music/SFX volumes immediately where Raylib allows. For broader changes—like adjusting preload lists—trigger `AudioManager::reloadAll()` to flush caches and repopulate using the latest configuration.
 
+## Real-time playback updates
+
+`AudioManager::playSound` returns a `PlaybackHandle` that remains valid while the sound is active. Use `AudioManager::updateSoundPlayback(handle, params)` to adjust the volume, pitch, or stereo pan without restarting the sample. The editor's File Preview window uses this to reflect slider movements instantly.
+
+```cpp
+using gb2d::audio::AudioManager;
+
+auto handle = AudioManager::playSound("ui/click.wav");
+
+gb2d::audio::PlaybackParams params;
+params.volume = 0.5f;
+params.pan = 0.25f; // bias left
+AudioManager::updateSoundPlayback(handle, params);
+```
+
+Call `AudioManager::stopSound(handle)` or let the clip finish naturally to release the slot. Handles become invalid automatically when the sound ends.
+
 For additional usage patterns (acquiring sounds, releasing handles, diagnostics), refer to the AudioManager API in `GameBuilder2d/src/services/audio/AudioManager.h`.

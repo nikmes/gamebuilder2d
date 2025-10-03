@@ -111,24 +111,56 @@ On WSL, reconfigure with `-DBUILD_TESTING=ON` or use the `windows-vs2022-x64-rel
 - Environment overrides: `GB2D_<SECTION>__<KEY>=value` (double underscore becomes dot). Values auto-detect booleans, integers, and floats.
 - Layout exports live in `out/layouts/<name>.{wm.txt,imgui.ini,layout.json}`. The manager restores `last` automatically on startup and backs up corrupted layouts.
 
-## TextureManager quickstart
+## Manager quickstarts
 
-- Initialized once during app bootstrap (`TextureManager::init` / `shutdown` already wired in `GameBuilder2d.cpp`).
-- Configure search paths, filters, mipmap behaviour, and placeholder assets via the `textures::` section in `config.json`.
-- Request textures through `TextureManager::acquire(identifier, alias)` and pair every successful call with `TextureManager::release(key)`.
-- Handle placeholder returns with `AcquireResult::placeholder` to signal missing art in the UI.
-- Use `TextureManager::metrics()` and `reloadAll()` to power diagnostics overlays or asset-refresh workflows.
+### ConfigurationManager
 
-👉 See the [TextureManager developer guide](GameBuilder2d/docs/texture-manager.md) for end‑to‑end examples, configuration tables, and the current roadmap.
+- Boots with `ConfigurationManager::loadOrDefault()`; use `load()` / `save()` for explicit persistence.
+- Retrieve strongly-typed values with `getBool`, `getInt`, `getDouble`, `getString`, or `getStringList`. Keys accept either dotted (`audio.master_volume`) or double-colon (`audio::master_volume`) formats.
+- Push overrides at runtime with the `set(...)` overloads, then call `save()` to persist. Subscribers registered via `subscribeOnChange` receive a callback whenever a save completes.
+- Environment overrides follow the `GB2D_<SECTION>__<KEY>` convention (e.g., `GB2D_WINDOW__FULLSCREEN=true`).
+- Export the active profile to diagnostics tools with `exportCompact()`.
 
-## AudioManager quickstart
+📚 Reference: [ConfigurationManager overview](GameBuilder2d/docs/configuration-manager.md)
 
-- `AudioManager::init()`/`shutdown()` already run during app bootstrap; call `AudioManager::tick()` each frame to keep music streams updated (wired in `GameBuilder2d.cpp`).
-- The `audio` block in `config.json` controls enablement, global volumes, alias slot limits, search paths, and optional preload lists for sounds and music.
-- Disabled or unavailable devices put the manager into silent mode—playback requests no-op but still resolve handles so callers can proceed safely.
-- Use `AudioManager::reloadAll()` after adjusting search paths or preload lists at runtime to refresh the caches.
+### TextureManager
 
-👉 See the [AudioManager configuration guide](GameBuilder2d/docs/audio-manager.md) for detailed key descriptions, defaults, and environment override examples.
+- The editor bootstrap already calls `TextureManager::init()` / `shutdown()`; other entry points should do so around the Raylib lifetime.
+- Configure search paths, filters, mipmap generation, placeholder assets, and VRAM budgets via `textures::*` keys in `config.json` or matching environment overrides.
+- Request textures through `TextureManager::acquire(identifier, alias)` and release them with `TextureManager::release(key)` once every holder is finished.
+- Check `AcquireResult::placeholder` to gracefully flag missing art in UI or gameplay overlays.
+- Expose diagnostics using `TextureManager::metrics()` and trigger hot reloads with `TextureManager::reloadAll()`.
+
+� Reference: [TextureManager developer guide](GameBuilder2d/docs/texture-manager.md)
+
+### AudioManager
+
+- Initialization, device probing, and per-frame `tick()` calls are wired in `GameBuilder2d.cpp`; most subsystems can simply acquire sounds and play them.
+- Configure enablement, global volumes, alias slot limits, search paths, and preload lists under the `audio` block in `config.json` (or `GB2D_AUDIO__*` environment variables).
+- Playback requests return a `PlaybackHandle`; call `AudioManager::updateSoundPlayback(handle, params)` to adjust volume/pan/pitch in real time—used by the editor's File Preview window to reflect slider changes instantly.
+- `AudioManager::reloadAll()` refreshes cached assets after changing search paths or when authoring new sounds while the tool is running.
+- Silent mode (triggered when devices are unavailable or explicitly disabled) keeps APIs safe to call while logging diagnostic hints.
+
+📚 Reference: [AudioManager configuration guide](GameBuilder2d/docs/audio-manager.md)
+
+### LogManager
+
+- Initialize logging early with `LogManager::init()`; reconfigure pattern/level/name through `LogManager::reconfigure()` or the `logger::` config block.
+- Use the convenience macros (`trace`, `debug`, `info`, etc.) to emit formatted messages; they forward to the shared spdlog sink feeding both disk/console and the ImGui log window.
+- Surface recent lines in tooling through `read_log_lines_snapshot`, adjust console retention with `set_log_buffer_capacity`, and clear the UI buffer when needed.
+- Shutdown via `LogManager::shutdown()` during teardown to flush sinks gracefully.
+
+📚 Reference: [LogManager cheat sheet](GameBuilder2d/docs/log-manager.md)
+
+### WindowManager
+
+- Owns dockspace creation, window lifetime, and layout serialization. Spawn editor panels with `spawnWindowByType(typeId, title)` or create ad-hoc ImGui shells with `createWindow`.
+- Integrate fullscreen gameplay sessions by passing a `FullscreenSession*` via `setFullscreenSession`; layouts automatically blend the editor and the running game view.
+- Persist user layouts with `saveLayout()` / `loadLayout()`. Layout files live in `out/layouts/<name>.layout.json` and are surfaced in the editor’s layout picker.
+- Use `dockWindow`, `undockWindow`, and `reorderTabs` to script layout changes, and call `shutdown()` before tearing down ImGui / raylib to ensure modular windows can release resources.
+- The built-in `WindowRegistry` keeps modular ImGui windows discoverable so tooling (e.g., the File Preview window with live audio controls) can spawn them on demand.
+
+📚 Reference: [WindowManager primer](GameBuilder2d/docs/window-manager.md)
 
 ## Dependencies
 
