@@ -67,6 +67,9 @@ struct ManagerState {
         bool active{false};
         bool placeholder{true};
         std::uint32_t generation{0};
+        float volume{1.0f};
+        float pitch{1.0f};
+        float pan{0.5f};
     };
     std::vector<SoundSlot> soundSlots{};
 };
@@ -127,17 +130,35 @@ const AudioManager::RaylibHooks& defaultHooks() {
 void stopAllSoundsLocked(ManagerState& st, const AudioManager::RaylibHooks& api);
 
 float clamp01(float value) {
-    return std::clamp(value, 0.0f, 1.0f);
+    if (value < 0.0f) {
+        return 0.0f;
+    }
+    if (value > 1.0f) {
+        return 1.0f;
+    }
+    return value;
 }
 
 float clampPitch(float value) {
     constexpr float kMinPitch = 0.125f;
     constexpr float kMaxPitch = 4.0f;
-    return std::clamp(value, kMinPitch, kMaxPitch);
+    if (value < kMinPitch) {
+        return kMinPitch;
+    }
+    if (value > kMaxPitch) {
+        return kMaxPitch;
+    }
+    return value;
 }
 
 float clampPan(float value) {
-    return std::clamp(value, 0.0f, 1.0f);
+    if (value < 0.0f) {
+        return 0.0f;
+    }
+    if (value > 1.0f) {
+        return 1.0f;
+    }
+    return value;
 }
 
 void ensureSoundSlotCapacity(ManagerState& st) {
@@ -271,6 +292,9 @@ void releaseSoundSlot(ManagerState::SoundSlot& slot, const AudioManager::RaylibH
     slot.active = false;
     slot.placeholder = true;
     slot.generation = 0;
+    slot.volume = 1.0f;
+    slot.pitch = 1.0f;
+    slot.pan = 0.5f;
 }
 
 void refreshSoundSlotsLocked(ManagerState& st, const AudioManager::RaylibHooks& api) {
@@ -710,10 +734,13 @@ PlaybackHandle AudioManager::playSound(const std::string& key, const PlaybackPar
         return {};
     }
 
-    float finalVolume = clamp01(params.volume * st.settings.sfxVolume);
+    float volume = clamp01(params.volume);
+    float finalVolume = clamp01(volume * st.settings.sfxVolume);
+    float pitch = clampPitch(params.pitch);
+    float pan = clampPan(params.pan);
     api.setSoundVolume(alias, finalVolume);
-    api.setSoundPitch(alias, clampPitch(params.pitch));
-    api.setSoundPan(alias, clampPan(params.pan));
+    api.setSoundPitch(alias, pitch);
+    api.setSoundPan(alias, pan);
     api.playSound(alias);
 
     auto& slot = st.soundSlots[*freeIndex];
@@ -722,6 +749,9 @@ PlaybackHandle AudioManager::playSound(const std::string& key, const PlaybackPar
     slot.active = true;
     slot.placeholder = false;
     slot.generation = st.generationCounter++;
+    slot.volume = volume;
+    slot.pitch = pitch;
+    slot.pan = pan;
     st.activeSoundInstances = std::min<std::size_t>(st.activeSoundInstances + 1, st.soundSlots.size());
 
     return PlaybackHandle{static_cast<int>(*freeIndex), slot.generation};
@@ -762,6 +792,62 @@ bool AudioManager::stopAllSounds() {
     }
     const auto& api = hooks(st);
     stopAllSoundsLocked(st, api);
+    return true;
+}
+
+bool AudioManager::isHandleActive(PlaybackHandle handle) {
+    if (!handle.valid()) {
+        return false;
+    }
+
+    auto& st = state();
+    std::scoped_lock lock(st.mutex);
+    if (!st.initialized) {
+        return false;
+    }
+
+    const auto index = static_cast<std::size_t>(handle.slot);
+    if (index >= st.soundSlots.size()) {
+        return false;
+    }
+
+    const auto& slot = st.soundSlots[index];
+    return slot.active && slot.generation == handle.generation;
+}
+
+bool AudioManager::updateSoundPlayback(PlaybackHandle handle, const PlaybackParams& params) {
+    if (!handle.valid()) {
+        return false;
+    }
+
+    auto& st = state();
+    std::scoped_lock lock(st.mutex);
+    if (!st.initialized) {
+        return false;
+    }
+
+    const auto index = static_cast<std::size_t>(handle.slot);
+    if (index >= st.soundSlots.size()) {
+        return false;
+    }
+
+    auto& slot = st.soundSlots[index];
+    if (!slot.active || slot.generation != handle.generation) {
+        return false;
+    }
+
+    const auto& api = hooks(st);
+    if (!isSoundValid(slot.alias)) {
+        return false;
+    }
+
+    slot.volume = clamp01(params.volume);
+    slot.pitch = clampPitch(params.pitch);
+    slot.pan = clampPan(params.pan);
+
+    api.setSoundVolume(slot.alias, clamp01(slot.volume * st.settings.sfxVolume));
+    api.setSoundPitch(slot.alias, slot.pitch);
+    api.setSoundPan(slot.alias, slot.pan);
     return true;
 }
 

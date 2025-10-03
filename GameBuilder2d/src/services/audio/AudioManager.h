@@ -80,6 +80,8 @@ public:
     static PlaybackHandle playSound(const std::string& key, const PlaybackParams& params = {});
     static bool stopSound(PlaybackHandle handle);
     static bool stopAllSounds();
+    static bool isHandleActive(PlaybackHandle handle);
+    static bool updateSoundPlayback(PlaybackHandle handle, const PlaybackParams& params);
 
     static bool playMusic(const std::string& key);
     static bool pauseMusic(const std::string& key);

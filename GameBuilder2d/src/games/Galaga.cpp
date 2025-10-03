@@ -220,7 +220,9 @@ void Galaga::updatePlayer(float dt, bool acceptInput) {
         if (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D)) {
             player_.pos.x += player_.speed * dt;
         }
-        player_.pos.x = std::clamp(player_.pos.x, 32.0f, static_cast<float>(width_) - 32.0f);
+    float minX = std::min(32.0f, static_cast<float>(width_) - 32.0f);
+    float maxX = std::max(32.0f, static_cast<float>(width_) - 32.0f);
+    player_.pos.x = std::clamp(player_.pos.x, minX, maxX);
 
         if ((IsKeyDown(KEY_SPACE) || IsKeyPressed(KEY_Z)) && player_.cooldown <= 0.0f) {
             Shot shot;

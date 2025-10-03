@@ -6,6 +6,7 @@
 
 #include "raylib.h"
 #include "services/texture/TextureManager.h"
+#include "services/audio/AudioManager.h"
 
 namespace gb2d {
 
@@ -28,7 +29,7 @@ public:
     void open(const std::string& path);
 
 private:
-    enum class Kind { None, Text, Image };
+    enum class Kind { None, Text, Image, Audio };
     std::string title_ { "Preview" };
     std::string path_{};
     Kind kind_{Kind::None};
@@ -37,6 +38,13 @@ private:
     bool imagePlaceholder_{false};
     gb2d::textures::AcquireResult imageTexture_{};
     bool loaded_{false};
+    gb2d::audio::AcquireSoundResult audioAsset_{};
+    bool audioPlaying_{false};
+    gb2d::audio::PlaybackHandle audioHandle_{};
+    float audioVolume_{1.0f};
+    float audioPan_{0.5f};
+    float audioPitch_{1.0f};
+    std::string audioAlias_{};
 
     void unload();
 };
