@@ -1,6 +1,7 @@
 #pragma once
 #include "ui/Window.h"
 #include "services/texture/TextureManager.h"
+#include "ui/ImGuiAuto/ImGuiAutoDemo.h" // Add ImGui::Auto Demo
 #include <nlohmann/json_fwd.hpp>
 #include <raylib.h>
 #include <functional>
@@ -65,6 +66,7 @@ private:
     std::unique_ptr<games::Game> current_game_{};
     bool game_needs_init_{false};
     bool fullscreen_requested_{false};
+    bool show_imgui_auto_demo_{false}; // Toggle for ImGui::Auto demo
 };
 
 } // namespace gb2d

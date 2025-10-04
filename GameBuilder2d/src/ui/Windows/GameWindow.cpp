@@ -9,6 +9,23 @@
 #include "games/PacMan.h"
 #include "games/PlarformerGame.h"
 #include "services/logger/LogManager.h"
+#include "ui/ImGuiAuto/ImGuiAuto.h"
+#include "ui/ImGuiAuto/ImGuiAutoDemo.h"
+#include <imgui.h>
+#include <nlohmann/json.hpp>
+#include <algorithm>
+#include <cstdint>
+#include <type_traits>
+#include <utility>
+#include "ui/FullscreenSession.h"
+#include "ui/ImGuiTextureHelpers.h"
+#include "games/Game.h"
+#include "games/SpaceInvaders.h"
+#include "games/Galaga.h"
+#include "games/HarrierAttack.h"
+#include "games/PacMan.h"
+#include "games/PlarformerGame.h"
+#include "services/logger/LogManager.h"
 #include <imgui.h>
 #include <nlohmann/json.hpp>
 #include <algorithm>
@@ -144,6 +161,12 @@ void GameWindow::render(WindowContext& ctx) {
     ensureGameSelected();
     ensureGameInitialized();
 
+    // Add a button to toggle the ImGui::Auto demo
+    if (ImGui::Button("ImGui::Auto Demo")) {
+        show_imgui_auto_demo_ = !show_imgui_auto_demo_;
+    }
+    ImGui::SameLine();
+    
     // Toolbar: game selection + reset
     if (!games_.empty()) {
         std::vector<const char*> names;
@@ -157,6 +180,10 @@ void GameWindow::render(WindowContext& ctx) {
         ImGui::SameLine();
         if (ImGui::Button("Reset")) {
             resetCurrentGame();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button(show_imgui_auto_demo_ ? "Hide ImGui::Auto Demo" : "Show ImGui::Auto Demo")) {
+            show_imgui_auto_demo_ = !show_imgui_auto_demo_;
         }
         ImGui::SameLine();
         bool hasSession = (ctx.fullscreen != nullptr);
@@ -255,6 +282,17 @@ void GameWindow::render(WindowContext& ctx) {
         ImVec2 uv0(0, 1);
         ImVec2 uv1(1, 0);
         ImGui::Image(texId, ImVec2(drawW, drawH), uv0, uv1);
+        
+        // Display the ImGui::Auto demo if enabled
+        if (show_imgui_auto_demo_) {
+            ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
+            ImGui::SetNextWindowSize(ImVec2(300, 400), ImGuiCond_FirstUseEver);
+            if (ImGui::Begin("ImGui::Auto Demo", &show_imgui_auto_demo_)) {
+                ImGui::Auto::Init(); // Initialize the ImGui::Auto system
+                ImGui::AutoDemo::ShowDemo();
+            }
+            ImGui::End();
+        }
     }
     ImGui::EndChild();
 }

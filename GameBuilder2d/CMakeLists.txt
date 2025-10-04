@@ -30,6 +30,16 @@ add_library(gb2d_window STATIC
   "src/ui/FullscreenSession.h"
   "src/ui/FullscreenSession.cpp"
 )
+
+# Add ImGui::Auto as a separate static library
+add_library(gb2d_imgui_auto STATIC
+  "src/ui/ImGuiAuto/ImGuiAuto.h"
+  "src/ui/ImGuiAuto/ImGuiAuto.inl"
+  "src/ui/ImGuiAuto/ImGuiAuto.cpp"
+  "src/ui/ImGuiAuto/ImGuiAutoImpl.cpp"
+  "src/ui/ImGuiAuto/ImGuiAutoDemo.h"
+  "src/ui/ImGuiAuto/ImGuiAutoDemo.cpp"
+)
 target_include_directories(gb2d_window PUBLIC "src")
 set_property(TARGET gb2d_window PROPERTY CXX_STANDARD 20)
 target_compile_options(gb2d_window PRIVATE
@@ -38,6 +48,14 @@ target_compile_options(gb2d_window PRIVATE
 )
  # Enable log console instrumentation (Phase 2 T2.1)
  target_compile_definitions(gb2d_window PRIVATE GB2D_LOG_CONSOLE_INSTRUMENT)
+ 
+# Configure ImGui::Auto library
+target_include_directories(gb2d_imgui_auto PUBLIC "src")
+set_property(TARGET gb2d_imgui_auto PROPERTY CXX_STANDARD 20)
+target_compile_options(gb2d_imgui_auto PRIVATE
+  $<$<CXX_COMPILER_ID:MSVC>:/FI"${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/ImGuiColorTextEdit/imgui_compat_shim.h">
+  $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-include ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/ImGuiColorTextEdit/imgui_compat_shim.h>
+)
 
 # Add source to this project's executable (app entry only)
 add_executable (GameBuilder2d
@@ -347,9 +365,12 @@ target_include_directories(rlImGui PUBLIC ${rlimgui_SOURCE_DIR})
 target_compile_definitions(rlImGui PUBLIC IMGUI_DEFINE_MATH_OPERATORS)
 target_link_libraries(rlImGui PUBLIC raylib imgui)
 
-# Window library depends on ImGui, file dialog, and raylib
-target_link_libraries(gb2d_window PUBLIC imgui imguifiledialog raylib gb2d_logging imguicolortextedit nlohmann_json::nlohmann_json)
+# ImGui::Auto library depends on ImGui
+target_link_libraries(gb2d_imgui_auto PUBLIC imgui nlohmann_json::nlohmann_json)
 
-target_link_libraries(GameBuilder2d PRIVATE raylib rlImGui imgui imguifiledialog gb2d_configuration gb2d_window gb2d_logging gb2d_texture gb2d_audio)
+# Window library depends on ImGui, file dialog, raylib and ImGui::Auto
+target_link_libraries(gb2d_window PUBLIC imgui imguifiledialog raylib gb2d_logging imguicolortextedit gb2d_imgui_auto nlohmann_json::nlohmann_json)
+
+target_link_libraries(GameBuilder2d PRIVATE raylib rlImGui imgui imguifiledialog gb2d_configuration gb2d_window gb2d_logging gb2d_texture gb2d_audio gb2d_imgui_auto)
 
 # TODO: Add tests and install targets if needed.
