@@ -12,6 +12,10 @@
 #include <algorithm>
 
 namespace {
+    constexpr float kConsoleFontScaleMin = 0.7f;
+    constexpr float kConsoleFontScaleMax = 2.5f;
+    constexpr float kConsoleTextBrightnessMin = 0.6f;
+    constexpr float kConsoleTextBrightnessMax = 1.8f;
     // Simple 64-bit FNV-1a hash utility for rebuild change detection
     uint64_t fnv1a64(const void* data, size_t len, uint64_t seed = 1469598103934665603ull) {
         uint64_t h = seed;
@@ -21,6 +25,15 @@ namespace {
             h *= 1099511628211ull;
         }
         return h;
+    }
+
+    ImU32 scaleColor(ImU32 color, float factor) {
+        ImVec4 c = ImGui::ColorConvertU32ToFloat4(color);
+        factor = std::clamp(factor, 0.1f, 2.5f);
+        c.x = std::clamp(c.x * factor, 0.0f, 1.0f);
+        c.y = std::clamp(c.y * factor, 0.0f, 1.0f);
+        c.z = std::clamp(c.z * factor, 0.0f, 1.0f);
+        return ImGui::ColorConvertFloat4ToU32(c);
     }
 
     // Custom tokenizer to color only the log level word (inside brackets) with a unique color per level.
@@ -37,6 +50,35 @@ namespace {
         }
         if (p >= in_end) return false;
 
+        if (*p == '[') {
+            const char* token_start = p;
+            ++p;
+            const char* word_start = p;
+            while (p < in_end && *p != ']' && *p != '\n' && *p != '\r') ++p;
+            const char* word_end = p;
+            if (p < in_end && *p == ']') {
+                std::string inner(word_start, word_end);
+                std::string lower;
+                lower.reserve(inner.size());
+                for (char c : inner) lower.push_back((char)std::tolower((unsigned char)c));
+
+                if (lower == "trace")      paletteIndex = TextEditor::PaletteIndex::Comment;
+                else if (lower == "debug") paletteIndex = TextEditor::PaletteIndex::Identifier;
+                else if (lower == "info")  paletteIndex = TextEditor::PaletteIndex::KnownIdentifier;
+                else if (lower == "warn" || lower == "warning")  paletteIndex = TextEditor::PaletteIndex::PreprocIdentifier;
+                else if (lower == "error" || lower == "err") paletteIndex = TextEditor::PaletteIndex::Keyword;
+                else if (lower == "crit" || lower == "critical") paletteIndex = TextEditor::PaletteIndex::Preprocessor;
+                else paletteIndex = TextEditor::PaletteIndex::Punctuation;
+
+                ++p; // consume closing bracket
+                out_begin = token_start;
+                out_end = p;
+                return true;
+            }
+            // unmatched '[', revert pointer to treat as punctuation below
+            p = token_start;
+        }
+
         if (std::ispunct((unsigned char)*p) && *p != '_' && *p != '-') {
             out_begin = p;
             out_end = p + 1;
@@ -52,40 +94,7 @@ namespace {
             std::string lower;
             lower.reserve(word.size());
             for (char c : word) lower.push_back((char)std::tolower((unsigned char)c));
-            bool isLevelPosition = false;
-            const char* lineStart = start;
-            while (lineStart > in_begin && *(lineStart - 1) != '\n') --lineStart;
-            if ((lineStart < start) && *lineStart == '[') {
-                const char* firstClose = lineStart + 1;
-                while (firstClose < in_end && *firstClose != ']' && *firstClose != '\n') ++firstClose;
-                if (firstClose < in_end && *firstClose == ']') {
-                    const char* maybeSpace = firstClose + 1;
-                    if (maybeSpace < in_end && *maybeSpace == ' ') {
-                        const char* secondOpen = maybeSpace + 1;
-                        if (secondOpen < in_end && *secondOpen == '[') {
-                            const char* secondClose = secondOpen + 1;
-                            while (secondClose < in_end && *secondClose != ']' && *secondClose != '\n') ++secondClose;
-                            if (secondClose < in_end && *secondClose == ']') {
-                                if (start >= secondOpen + 1 && p <= secondClose) {
-                                    isLevelPosition = true;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (isLevelPosition) {
-                if (lower == "trace")      paletteIndex = TextEditor::PaletteIndex::Comment;
-                else if (lower == "debug") paletteIndex = TextEditor::PaletteIndex::Identifier;
-                else if (lower == "info")  paletteIndex = TextEditor::PaletteIndex::KnownIdentifier;
-                else if (lower == "warn")  paletteIndex = TextEditor::PaletteIndex::PreprocIdentifier;
-                else if (lower == "error") paletteIndex = TextEditor::PaletteIndex::Keyword;
-                else if (lower == "crit" || lower == "critical") paletteIndex = TextEditor::PaletteIndex::Preprocessor;
-                else paletteIndex = TextEditor::PaletteIndex::Default;
-            } else {
-                paletteIndex = TextEditor::PaletteIndex::Default;
-            }
+            paletteIndex = TextEditor::PaletteIndex::Default;
             out_begin = start;
             out_end = p;
             return true;
@@ -127,18 +136,44 @@ void ConsoleLogWindow::initEditorIfNeeded() {
     gb2d::logging::set_log_buffer_capacity(buffer_cap_);
     editor_.SetReadOnly(true);
     editor_.SetShowWhitespaces(false);
-    auto palette = TextEditor::GetDarkPalette();
-    palette[(int)TextEditor::PaletteIndex::Comment] = 0xFF5A5A5A;           // TRACE
-    palette[(int)TextEditor::PaletteIndex::Identifier] = 0xFF4FC1FF;        // DEBUG
-    palette[(int)TextEditor::PaletteIndex::KnownIdentifier] = 0xFF52D273;   // INFO
-    palette[(int)TextEditor::PaletteIndex::PreprocIdentifier] = 0xFFE0C17D; // WARN
-    palette[(int)TextEditor::PaletteIndex::Keyword] = 0xFFFF5A5A;           // ERROR
-    palette[(int)TextEditor::PaletteIndex::Preprocessor] = 0xFFE070FF;      // CRIT
-    palette[(int)TextEditor::PaletteIndex::Punctuation] = 0xFFAAAAAA;
-    palette[(int)TextEditor::PaletteIndex::Default] = 0xFF00FF00;
-    palette[(int)TextEditor::PaletteIndex::Background] = 0xFF1E1E1E;
-    editor_.SetPalette(palette);
+    editor_.SetImGuiChildIgnored(true);
+    applyPalette();
     editor_.SetLanguageDefinition(CreateLogLanguageDefinition());
+}
+
+void ConsoleLogWindow::applyPalette() {
+    float tone = std::clamp(text_brightness_, kConsoleTextBrightnessMin, kConsoleTextBrightnessMax);
+    text_brightness_ = tone;
+
+    auto palette = TextEditor::GetDarkPalette();
+    auto toneColor = [&](ImU32 base, float multiplier = 1.0f) {
+        return scaleColor(base, tone * multiplier);
+    };
+
+    palette[(int)TextEditor::PaletteIndex::Default] = toneColor(IM_COL32(220, 220, 220, 255));
+    palette[(int)TextEditor::PaletteIndex::Number] = palette[(int)TextEditor::PaletteIndex::Default];
+    palette[(int)TextEditor::PaletteIndex::String] = palette[(int)TextEditor::PaletteIndex::Default];
+    palette[(int)TextEditor::PaletteIndex::CharLiteral] = palette[(int)TextEditor::PaletteIndex::Default];
+
+    palette[(int)TextEditor::PaletteIndex::Identifier] = IM_COL32(110, 190, 255, 255);       // DEBUG (sky blue)
+    palette[(int)TextEditor::PaletteIndex::KnownIdentifier] = IM_COL32(120, 230, 150, 255);  // INFO (bright green)
+    palette[(int)TextEditor::PaletteIndex::PreprocIdentifier] = IM_COL32(255, 200, 80, 255); // WARN (amber)
+    palette[(int)TextEditor::PaletteIndex::Keyword] = IM_COL32(255, 110, 110, 255);          // ERROR (red)
+    palette[(int)TextEditor::PaletteIndex::Preprocessor] = IM_COL32(230, 120, 255, 255);     // CRIT (magenta)
+
+    palette[(int)TextEditor::PaletteIndex::Comment] = toneColor(IM_COL32(160, 160, 160, 255), 0.85f);
+    palette[(int)TextEditor::PaletteIndex::MultiLineComment] = palette[(int)TextEditor::PaletteIndex::Comment];
+    palette[(int)TextEditor::PaletteIndex::Punctuation] = toneColor(IM_COL32(190, 190, 190, 255));
+
+    palette[(int)TextEditor::PaletteIndex::Background] = IM_COL32(26, 26, 28, 255);
+    palette[(int)TextEditor::PaletteIndex::LineNumber] = toneColor(IM_COL32(130, 130, 130, 255), 0.9f);
+    palette[(int)TextEditor::PaletteIndex::Cursor] = toneColor(IM_COL32(255, 255, 255, 255), 1.1f);
+    palette[(int)TextEditor::PaletteIndex::Selection] = toneColor(IM_COL32(80, 120, 180, 160), 0.95f);
+    palette[(int)TextEditor::PaletteIndex::CurrentLineFill] = IM_COL32(50, 50, 50, 60);
+    palette[(int)TextEditor::PaletteIndex::CurrentLineFillInactive] = IM_COL32(40, 40, 40, 40);
+    palette[(int)TextEditor::PaletteIndex::CurrentLineEdge] = IM_COL32(60, 60, 60, 120);
+
+    editor_.SetPalette(palette);
 }
 
 void ConsoleLogWindow::rebuildEditorIfNeeded() {
@@ -275,6 +310,7 @@ void ConsoleLogWindow::rebuildEditorIfNeeded() {
 
 void ConsoleLogWindow::render(WindowContext& /*ctx*/) {
     initEditorIfNeeded();
+    font_scale_ = std::clamp(font_scale_, kConsoleFontScaleMin, kConsoleFontScaleMax);
 
     // Settings / controls row
     ImGui::SetNextItemWidth(120);
@@ -306,6 +342,40 @@ void ConsoleLogWindow::render(WindowContext& /*ctx*/) {
         auto txt = editor_.GetText();
         ImGui::SetClipboardText(txt.c_str());
     }
+    ImGui::SameLine();
+    ImGui::TextUnformatted("Font");
+    ImGui::SameLine();
+    if (ImGui::SmallButton("A-")) {
+    font_scale_ = std::max(kConsoleFontScaleMin, font_scale_ - 0.1f);
+    }
+    ImGui::SameLine();
+    if (ImGui::SmallButton("A+")) {
+    font_scale_ = std::min(kConsoleFontScaleMax, font_scale_ + 0.1f);
+    }
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(110.0f);
+    if (ImGui::SliderFloat("##console_font_scale", &font_scale_, kConsoleFontScaleMin, kConsoleFontScaleMax, "%.2fx")) {
+        font_scale_ = std::clamp(font_scale_, kConsoleFontScaleMin, kConsoleFontScaleMax);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Reset##console_font")) {
+        font_scale_ = 1.0f;
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("x%.2f", font_scale_);
+    ImGui::SameLine();
+    ImGui::TextUnformatted("Tone");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(120.0f);
+    if (ImGui::SliderFloat("##console_text_brightness", &text_brightness_, kConsoleTextBrightnessMin, kConsoleTextBrightnessMax, "%.2f")) {
+        applyPalette();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Reset##console_text_tone")) {
+        text_brightness_ = 1.0f;
+        applyPalette();
+    }
+    ImGui::NewLine();
 
     auto lvlBtn2 = [&](const char* label, uint32_t bit){
         bool on = (level_mask_ & bit) != 0;
@@ -408,7 +478,19 @@ void ConsoleLogWindow::render(WindowContext& /*ctx*/) {
     }
 
     rebuildEditorIfNeeded();
-    editor_.Render("##log_editor");
+    constexpr ImGuiWindowFlags editorFlags = ImGuiWindowFlags_HorizontalScrollbar |
+                                            ImGuiWindowFlags_AlwaysHorizontalScrollbar |
+                                            ImGuiWindowFlags_NoMove;
+    if (ImGui::BeginChild("##console_log_editor", ImVec2(0, 0), false, editorFlags)) {
+        if (font_scale_ != 1.0f) {
+            ImGui::SetWindowFontScale(font_scale_);
+        }
+        editor_.Render("##log_editor");
+        if (font_scale_ != 1.0f) {
+            ImGui::SetWindowFontScale(1.0f);
+        }
+    }
+    ImGui::EndChild();
 }
 
 void ConsoleLogWindow::serialize(nlohmann::json& out) const {
@@ -418,6 +500,8 @@ void ConsoleLogWindow::serialize(nlohmann::json& out) const {
     out["buffer_cap"] = buffer_cap_;
     out["level_mask"] = level_mask_;
     out["text_filter"] = text_filter_;
+    out["font_scale"] = font_scale_;
+    out["text_brightness"] = text_brightness_;
 }
 
 void ConsoleLogWindow::deserialize(const nlohmann::json& in) {
@@ -429,6 +513,13 @@ void ConsoleLogWindow::deserialize(const nlohmann::json& in) {
     }
     if (auto it = in.find("level_mask"); it != in.end() && it->is_number_unsigned()) level_mask_ = (uint32_t)*it;
     if (auto it = in.find("text_filter"); it != in.end() && it->is_string()) text_filter_ = *it;
+    if (auto it = in.find("font_scale"); it != in.end() && (it->is_number_float() || it->is_number_integer())) {
+        font_scale_ = std::clamp((float)it->get<double>(), kConsoleFontScaleMin, kConsoleFontScaleMax);
+    }
+    if (auto it = in.find("text_brightness"); it != in.end() && (it->is_number_float() || it->is_number_integer())) {
+        text_brightness_ = std::clamp((float)it->get<double>(), kConsoleTextBrightnessMin, kConsoleTextBrightnessMax);
+        if (editor_initialized_) applyPalette();
+    }
 }
 
 } // namespace gb2d

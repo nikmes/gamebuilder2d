@@ -368,8 +368,8 @@ target_link_libraries(rlImGui PUBLIC raylib imgui)
 # ImGui::Auto library depends on ImGui
 target_link_libraries(gb2d_imgui_auto PUBLIC imgui nlohmann_json::nlohmann_json)
 
-# Window library depends on ImGui, file dialog, raylib and ImGui::Auto
-target_link_libraries(gb2d_window PUBLIC imgui imguifiledialog raylib gb2d_logging imguicolortextedit gb2d_imgui_auto nlohmann_json::nlohmann_json)
+# Window library depends on ImGui, file dialog, raylib
+target_link_libraries(gb2d_window PUBLIC imgui imguifiledialog raylib gb2d_logging imguicolortextedit nlohmann_json::nlohmann_json)
 
 target_link_libraries(GameBuilder2d PRIVATE raylib rlImGui imgui imguifiledialog gb2d_configuration gb2d_window gb2d_logging gb2d_texture gb2d_audio gb2d_imgui_auto)
 

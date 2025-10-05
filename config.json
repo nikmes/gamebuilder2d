@@ -1,37 +1,37 @@
 {
+  "audio": {
+    "enabled": true,
+    "master_volume": 1.0,
+    "max_concurrent_sounds": 16,
+    "music_volume": 1.0,
+    "preload_music": [],
+    "preload_sounds": [],
+    "search_paths": [
+      "assets/audio"
+    ],
+    "sfx_volume": 1.0
+  },
   "fullscreen": {
     "game_height": 1080,
     "game_width": 1920,
-    "height": 2160,
-    "width": 3840
+    "height": 1080,
+    "width": 1920
+  },
+  "textures": {
+    "default_filter": "bilinear",
+    "generate_mipmaps": false,
+    "max_bytes": 0,
+    "placeholder_path": "",
+    "search_paths": [
+      "assets/textures"
+    ]
   },
   "ui": {
     "theme": "dark"
   },
-  "textures": {
-    "search_paths": [
-      "assets/textures"
-    ],
-    "default_filter": "bilinear",
-    "generate_mipmaps": false,
-    "max_bytes": 0,
-    "placeholder_path": ""
-  },
-  "audio": {
-    "enabled": true,
-    "master_volume": 1.0,
-    "music_volume": 1.0,
-    "sfx_volume": 1.0,
-    "max_concurrent_sounds": 16,
-    "search_paths": [
-      "assets/audio"
-    ],
-    "preload_sounds": [],
-    "preload_music": []
-  },
   "version": 1,
   "window": {
-    "fullscreen": false,
+    "fullscreen": true,
     "height": 1080,
     "width": 1920
   }

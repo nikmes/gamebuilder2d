@@ -1,7 +1,8 @@
 #pragma once
 #include "ui/Window.h"
 #include "services/texture/TextureManager.h"
-#include "ui/ImGuiAuto/ImGuiAutoDemo.h" // Add ImGui::Auto Demo
+// Forward declare ImGui::AutoDemo::ShowDemo instead of including the header
+namespace ImGui { namespace AutoDemo { void ShowDemo(); } }
 #include <nlohmann/json_fwd.hpp>
 #include <raylib.h>
 #include <functional>

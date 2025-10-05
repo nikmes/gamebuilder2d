@@ -34,6 +34,8 @@ private:
     size_t buffer_cap_{5000};
     uint32_t level_mask_{0x3F};
     std::string text_filter_{};
+    float font_scale_{1.0f};
+    float text_brightness_{1.0f};
 
     // TextEditor-backed console state
     TextEditor editor_{};
@@ -61,6 +63,7 @@ private:
     // Helpers
     void initEditorIfNeeded();
     void rebuildEditorIfNeeded();
+    void applyPalette();
 };
 
 } // namespace gb2d
