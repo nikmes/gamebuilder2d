@@ -82,6 +82,16 @@ As a GameBuilder2d user, I can open a Configuration window that presents setting
 - **Backup behavior**: First successful Save per session emits a `config.backup.json` snapshot beside the primary file before writing. Subsequent saves update both files atomically. Toast: *"Backup created: config.backup.json"* on initial backup.
 - **Autosave policy**: No automatic saves. Apply updates runtime state but retains dirty markers until Save completes, encouraging explicit persistence.
 
+#### Configuration inventory & documentation gaps *(T103)*
+- **window** — `width`, `height`, `fullscreen`. Covered briefly in README + docs, but lacks detail on units and interaction with fullscreen overrides. Add a dedicated section noting restart-free updates.
+- **fullscreen** — `width`, `height`, `game_width`, `game_height`. Currently undocumented; specify that `game_*` controls render target size for fullscreen sessions while `width/height` drive monitor selection.
+- **ui** — `theme` enum (`dark`, `light` future). Mentioned implicitly; document available values and future extension path.
+- **textures** — `search_paths`, `default_filter`, `generate_mipmaps`, `max_bytes`, `placeholder_path`. Developer guide covers most, but `max_bytes`/`placeholder_path` need explicit descriptions in user docs.
+- **audio** — `enabled`, `master_volume`, `music_volume`, `sfx_volume`, `max_concurrent_sounds`, `search_paths`, `preload_sounds`, `preload_music`. README highlights volumes/search paths; add doc blurbs for `preload_*` arrays and concurrency limits.
+- **input.hotkeys** — fully covered by HotKeyManager docs; ensure Configuration window links to that guide for advanced editing.
+- **version** — internal integer used for migration. Should remain hidden/readonly in UI with tooltip explaining purpose.
+- **Future/unknown keys** — emphasize that the Configuration window must surface unrecognized keys in a "Misc"/JSON editor to preserve customizations (ties to FR-010).
+
 ---
 
 ## Requirements *(mandatory)*
