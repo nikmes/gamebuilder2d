@@ -1,5 +1,13 @@
 # Changelog
 
+## 2025-10-07
+
+### Added
+- User-facing documentation for the HotKeyManager, including the new guide at `GameBuilder2d/docs/hotkey-manager.md` and README quickstart notes.
+
+### Changed
+- README and configuration docs now describe the `input.hotkeys` block and the in-app Hotkeys editor.
+
 ## 2025-10-01
 
 ### Added

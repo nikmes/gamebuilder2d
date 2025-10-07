@@ -16,6 +16,8 @@
 // Include logging definitions (LogLine) needed for incremental log console state.
 #include "services/logger/LogManager.h"
 
+struct ImGuiIO;
+
 namespace gb2d {
 
 class FullscreenSession;
@@ -44,6 +46,8 @@ public:
 
     // Render ImGui-based UI elements (docking, tabs to be implemented later)
     void renderUI();
+
+    void syncHotkeySuppression(const ImGuiIO* imguiIO, bool imguiFrameActive);
 
     void setFullscreenSession(FullscreenSession* session);
 
@@ -78,6 +82,8 @@ private:
     void renderDockTargetsOverlay();
     void toggleEditorFullscreen();
     void setEditorFullscreen(bool enable);
+    void processGlobalHotkeys();
+    void openFileDialog(const char* dialogTitle, const char* filters);
 
     struct Toast {
         std::string text;
@@ -123,6 +129,9 @@ private:
     FullscreenSession* fullscreen_session_{nullptr};
     int editor_window_restore_width_{0};
     int editor_window_restore_height_{0};
+
+    bool hotkey_suppressed_text_input_{false};
+    bool hotkey_suppressed_modal_{false};
 };
 
 } // namespace gb2d

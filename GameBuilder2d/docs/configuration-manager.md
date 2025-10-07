@@ -19,8 +19,27 @@ The default config lives at `config.json` (see `paths::configFilePath()` for pla
 - UI theme selection (`ui.theme`).
 - Texture service configuration (`textures.*`).
 - Audio service configuration (`audio.*`).
+- Hotkey overrides (`input.hotkeys` array) used by the editor to persist custom shortcuts.
 
 Feel free to extend the schema—new keys automatically participate in typed getters/setters.
+
+### Hotkey bindings block
+
+The HotKeyManager reads and writes the `input.hotkeys` array. Each element tracks one action and its shortcut in canonical text form:
+
+```jsonc
+"input": {
+    "hotkeys": [
+        { "action": "global.openFileDialog", "shortcut": "Ctrl+O" },
+        { "action": "codeEditor.saveFile", "shortcut": "Cmd+S" },
+        { "action": "gameWindow.resetGame", "shortcut": null } // disabled until reassigned
+    ]
+}
+```
+
+- Missing or `null` shortcuts disable the action.
+- Unknown action IDs are ignored during load with a warning, preserving forward compatibility across branches.
+- The Hotkeys UI rewrites this block when you click **Save**, preserving comments or non-action entries (e.g., separator objects) where possible.
 
 ## Environment overrides
 

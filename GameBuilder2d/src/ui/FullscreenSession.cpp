@@ -5,6 +5,8 @@
 
 #include "services/configuration/ConfigurationManager.h"
 #include "services/logger/LogManager.h"
+#include "services/hotkey/HotKeyActions.h"
+#include "services/hotkey/HotKeyManager.h"
 
 namespace gb2d {
 
@@ -139,10 +141,11 @@ void FullscreenSession::tick(float dt) {
     ClearBackground(BLACK);
     game_->render(targetWidth_, targetHeight_);
 
-    bool ctrlDown = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
-    bool exitWithCtrlW = ctrlDown && IsKeyPressed(KEY_W);
-    bool exitWithEsc = IsKeyPressed(KEY_ESCAPE);
-    if (exitWithCtrlW || exitWithEsc) {
+    const bool ctrlDown = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
+    const bool exitWithCtrlW = ctrlDown && IsKeyPressed(KEY_W);
+    const bool exitViaHotkey = gb2d::hotkeys::HotKeyManager::isInitialized() &&
+                               gb2d::hotkeys::HotKeyManager::consumeTriggered(gb2d::hotkeys::actions::FullscreenExit);
+    if (exitWithCtrlW || exitViaHotkey) {
         requestStop();
     }
 }

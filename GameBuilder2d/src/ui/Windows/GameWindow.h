@@ -53,6 +53,7 @@ private:
     void releaseGameIcons();
     void ensureGameSelected();
     void switchGame(int index);
+    void cycleGame(int delta);
     void resetCurrentGame();
     void ensureGameInitialized();
     void handleFullscreenExit();

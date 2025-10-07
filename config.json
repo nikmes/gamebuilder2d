@@ -17,6 +17,31 @@
     "height": 1080,
     "width": 1920
   },
+  "input": {
+    "hotkeys": [
+      { "action": "global.openFileDialog", "shortcut": "Ctrl+O" },
+      { "action": "global.openImageDialog", "shortcut": "Ctrl+Shift+O" },
+      { "action": "global.toggleEditorFullscreen", "shortcut": "F11" },
+      { "action": "global.focusTextEditor", "shortcut": "Ctrl+Shift+E" },
+      { "action": "global.showConsole", "shortcut": "Ctrl+Shift+C" },
+      { "action": "global.spawnDockWindow", "shortcut": "Ctrl+Shift+N" },
+      { "action": "global.openHotkeySettings", "shortcut": "Ctrl+Alt+K" },
+      { "action": "layouts.saveLayout", "shortcut": "Ctrl+Alt+S" },
+      { "action": "layouts.openManager", "shortcut": "Ctrl+Alt+L" },
+      { "action": "codeEditor.newFile", "shortcut": "Ctrl+N" },
+      { "action": "codeEditor.openFile", "shortcut": "Ctrl+Shift+O" },
+      { "action": "codeEditor.saveFile", "shortcut": "Ctrl+S" },
+      { "action": "codeEditor.saveFileAs", "shortcut": "Ctrl+Shift+S" },
+      { "action": "codeEditor.saveAll", "shortcut": "Ctrl+Alt+S" },
+      { "action": "codeEditor.closeTab", "shortcut": "Ctrl+W" },
+      { "action": "codeEditor.closeAllTabs", "shortcut": "Ctrl+Shift+W" },
+      { "action": "gameWindow.toggleFullscreen", "shortcut": "Alt+Enter" },
+      { "action": "gameWindow.resetGame", "shortcut": "Ctrl+R" },
+      { "action": "gameWindow.cycleNextGame", "shortcut": "Ctrl+Tab" },
+      { "action": "gameWindow.cyclePrevGame", "shortcut": "Ctrl+Shift+Tab" },
+      { "action": "fullscreen.exitSession", "shortcut": "Esc" }
+    ]
+  },
   "textures": {
     "default_filter": "bilinear",
     "generate_mipmaps": false,

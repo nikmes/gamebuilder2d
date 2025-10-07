@@ -1,6 +1,7 @@
 #include "ConfigurationManager.h"
 #include "paths.h"
 #include "json_io.h"
+#include "services/hotkey/HotKeyActions.h"
 #include <nlohmann/json.hpp>
 using nlohmann::json;
 #include <filesystem>
@@ -9,7 +10,10 @@ using nlohmann::json;
 #include <cctype>
 #include <mutex>
 #include <map>
+#include <set>
 #include <optional>
+#include <array>
+#include <utility>
 
 #if !defined(_WIN32)
 extern "C" char **environ;
@@ -18,6 +22,63 @@ extern "C" char **environ;
 namespace gb2d {
 namespace {
 	static constexpr int kCurrentConfigVersion = 1;
+
+	namespace hotkey_actions = gb2d::hotkeys::actions;
+
+	const json* get_by_path(const json& j, const std::string& path);
+	json& ensure_json_path(json& j, const std::string& path);
+
+	using HotkeyDefault = std::pair<const char*, const char*>;
+	constexpr std::array<HotkeyDefault, 21> kDefaultHotkeys = {{
+		{hotkey_actions::OpenFileDialog,       "Ctrl+O"},
+		{hotkey_actions::OpenImageDialog,      "Ctrl+Shift+O"},
+		{hotkey_actions::ToggleEditorFullscreen, "F11"},
+		{hotkey_actions::FocusTextEditor,      "Ctrl+Shift+E"},
+		{hotkey_actions::ShowConsole,          "Ctrl+Shift+C"},
+		{hotkey_actions::SpawnDockWindow,      "Ctrl+Shift+N"},
+		{hotkey_actions::OpenHotkeySettings,   "Ctrl+Alt+K"},
+		{hotkey_actions::SaveLayout,           "Ctrl+Alt+S"},
+		{hotkey_actions::OpenLayoutManager,    "Ctrl+Alt+L"},
+		{hotkey_actions::CodeNewFile,          "Ctrl+N"},
+		{hotkey_actions::CodeOpenFile,         "Ctrl+Shift+O"},
+		{hotkey_actions::CodeSaveFile,         "Ctrl+S"},
+		{hotkey_actions::CodeSaveFileAs,       "Ctrl+Shift+S"},
+		{hotkey_actions::CodeSaveAll,          "Ctrl+Alt+S"},
+		{hotkey_actions::CodeCloseTab,         "Ctrl+W"},
+		{hotkey_actions::CodeCloseAllTabs,     "Ctrl+Shift+W"},
+		{hotkey_actions::GameToggleFullscreen, "Alt+Enter"},
+		{hotkey_actions::GameReset,            "Ctrl+R"},
+		{hotkey_actions::GameCycleNext,        "Ctrl+Tab"},
+		{hotkey_actions::GameCyclePrev,        "Ctrl+Shift+Tab"},
+		{hotkey_actions::FullscreenExit,       "Esc"},
+	}};
+
+	json buildHotkeyDefaultsArray() {
+		json arr = json::array();
+		for (const auto& [actionId, shortcut] : kDefaultHotkeys) {
+			json entry = json::object();
+			entry["action"] = actionId;
+			entry["shortcut"] = shortcut;
+			arr.push_back(std::move(entry));
+		}
+		return arr;
+	}
+
+	void ensureHotkeyDefaults(json& j, bool overrideExisting) {
+		const json* existing = get_by_path(j, "input.hotkeys");
+		bool shouldApply = overrideExisting;
+		if (!shouldApply) {
+			if (!existing) {
+				shouldApply = true;
+			} else if (!existing->is_array()) {
+				shouldApply = true;
+			}
+		}
+		if (!shouldApply) {
+			return;
+		}
+		ensure_json_path(j, "input.hotkeys") = buildHotkeyDefaultsArray();
+	}
 
 
 	json& cfg() {
@@ -40,6 +101,11 @@ namespace {
 		return id;
 	}
 
+	std::vector<ConfigurationManager::OnConfigReloadedHook>& reload_hooks() {
+		static std::vector<ConfigurationManager::OnConfigReloadedHook> hooks;
+		return hooks;
+	}
+
 	// Navigate JSON by dotted path; returns pointer if found else nullptr
 	const json* get_by_path(const json& j, const std::string& path) {
 		const json* cur = &j;
@@ -60,7 +126,7 @@ namespace {
 	}
 
 	// Ensure objects exist along path and return reference to leaf slot
-	json& ensure_path(json& j, const std::string& path) {
+	json& ensure_json_path(json& j, const std::string& path) {
 		json* cur = &j;
 		size_t start = 0;
 		while (start <= path.size()) {
@@ -167,7 +233,7 @@ namespace {
 			std::string key_part(suffix);
 			std::string key = map_env_key_to_config_key(key_part);
 			json val = parse_env_value(std::string(value));
-			ensure_path(j, key) = std::move(val);
+			ensure_json_path(j, key) = std::move(val);
 			++count;
 		}
 		return count;
@@ -226,32 +292,33 @@ void ConfigurationManager::loadOrDefault() {
 	// Populate in-memory defaults. Later, this will attempt disk load first.
 	json& c = cfg();
 	c = json::object();
-	ensure_path(c, "version") = kCurrentConfigVersion;
-	ensure_path(c, "window.width") = 1280;
-	ensure_path(c, "window.height") = 720;
-	ensure_path(c, "window.fullscreen") = false;
-	ensure_path(c, "fullscreen.width") = 1920;
-	ensure_path(c, "fullscreen.height") = 1080;
-	ensure_path(c, "fullscreen.game_width") = 0;
-	ensure_path(c, "fullscreen.game_height") = 0;
-	ensure_path(c, "ui.theme") = "dark";
-	auto& textureSearch = ensure_path(c, "textures.search_paths");
+	ensure_json_path(c, "version") = kCurrentConfigVersion;
+	ensure_json_path(c, "window.width") = 1280;
+	ensure_json_path(c, "window.height") = 720;
+	ensure_json_path(c, "window.fullscreen") = false;
+	ensure_json_path(c, "fullscreen.width") = 1920;
+	ensure_json_path(c, "fullscreen.height") = 1080;
+	ensure_json_path(c, "fullscreen.game_width") = 0;
+	ensure_json_path(c, "fullscreen.game_height") = 0;
+	ensure_json_path(c, "ui.theme") = "dark";
+	auto& textureSearch = ensure_json_path(c, "textures.search_paths");
 	textureSearch = json::array();
 	textureSearch.push_back("assets/textures");
-	ensure_path(c, "textures.default_filter") = "bilinear";
-	ensure_path(c, "textures.generate_mipmaps") = false;
-	ensure_path(c, "textures.max_bytes") = 0;
-	ensure_path(c, "textures.placeholder_path") = "";
-	ensure_path(c, "audio.enabled") = true;
-	ensure_path(c, "audio.master_volume") = 1.0;
-	ensure_path(c, "audio.music_volume") = 1.0;
-	ensure_path(c, "audio.sfx_volume") = 1.0;
-	ensure_path(c, "audio.max_concurrent_sounds") = 16;
-	auto& audioSearch = ensure_path(c, "audio.search_paths");
+	ensure_json_path(c, "textures.default_filter") = "bilinear";
+	ensure_json_path(c, "textures.generate_mipmaps") = false;
+	ensure_json_path(c, "textures.max_bytes") = 0;
+	ensure_json_path(c, "textures.placeholder_path") = "";
+	ensure_json_path(c, "audio.enabled") = true;
+	ensure_json_path(c, "audio.master_volume") = 1.0;
+	ensure_json_path(c, "audio.music_volume") = 1.0;
+	ensure_json_path(c, "audio.sfx_volume") = 1.0;
+	ensure_json_path(c, "audio.max_concurrent_sounds") = 16;
+	auto& audioSearch = ensure_json_path(c, "audio.search_paths");
 	audioSearch = json::array();
 	audioSearch.push_back("assets/audio");
-	ensure_path(c, "audio.preload_sounds") = json::array();
-	ensure_path(c, "audio.preload_music") = json::array();
+	ensure_json_path(c, "audio.preload_sounds") = json::array();
+	ensure_json_path(c, "audio.preload_music") = json::array();
+	ensureHotkeyDefaults(c, true);
 	size_t overrides = apply_env_overrides(c);
 	(void)overrides; // no logging
 }
@@ -284,8 +351,16 @@ bool ConfigurationManager::load() {
 	}
 	(void)fromVer; // suppress unused if no logging
 	cfg() = std::move(*j);
+	ensureHotkeyDefaults(cfg(), false);
 	size_t overrides2 = apply_env_overrides(cfg());
 	(void)overrides2;
+
+	// Notify reload hooks
+	for (const auto& hook : reload_hooks()) {
+		if (hook.callback) {
+			hook.callback();
+		}
+	}
 	return true;
 }
 
@@ -343,14 +418,18 @@ std::vector<std::string> ConfigurationManager::getStringList(const std::string& 
 	return defaultValue;
 }
 
-void ConfigurationManager::set(const std::string& key, bool value) { ensure_path(cfg(), normalize_key(key)) = value; }
-void ConfigurationManager::set(const std::string& key, int64_t value) { ensure_path(cfg(), normalize_key(key)) = value; }
-void ConfigurationManager::set(const std::string& key, double value) { ensure_path(cfg(), normalize_key(key)) = value; }
-void ConfigurationManager::set(const std::string& key, const std::string& value) { ensure_path(cfg(), normalize_key(key)) = value; }
+void ConfigurationManager::set(const std::string& key, bool value) { ensure_json_path(cfg(), normalize_key(key)) = value; }
+void ConfigurationManager::set(const std::string& key, int64_t value) { ensure_json_path(cfg(), normalize_key(key)) = value; }
+void ConfigurationManager::set(const std::string& key, double value) { ensure_json_path(cfg(), normalize_key(key)) = value; }
+void ConfigurationManager::set(const std::string& key, const std::string& value) { ensure_json_path(cfg(), normalize_key(key)) = value; }
 void ConfigurationManager::set(const std::string& key, const std::vector<std::string>& value) {
 	json arr = json::array();
 	for (const auto& s : value) arr.push_back(s);
-	ensure_path(cfg(), normalize_key(key)) = std::move(arr);
+	ensure_json_path(cfg(), normalize_key(key)) = std::move(arr);
+}
+
+void ConfigurationManager::setJson(const std::string& key, const json& value) {
+	ensure_json_path(cfg(), normalize_key(key)) = value;
 }
 
 int ConfigurationManager::subscribeOnChange(const std::function<void()>& cb) {
@@ -367,5 +446,24 @@ void ConfigurationManager::unsubscribe(int id) {
 
 std::string ConfigurationManager::exportCompact() {
 	return cfg().dump();
+}
+
+const json& ConfigurationManager::raw() {
+	return cfg();
+}
+
+void ConfigurationManager::pushReloadHook(const OnConfigReloadedHook& hook) {
+	if (!hook.callback) {
+		return;
+	}
+
+	auto& hooks = reload_hooks();
+	const bool exists = std::any_of(hooks.begin(), hooks.end(), [&](const OnConfigReloadedHook& existing) {
+		return !existing.name.empty() && existing.name == hook.name;
+	});
+	if (exists) {
+		return;
+	}
+	hooks.push_back(hook);
 }
 }

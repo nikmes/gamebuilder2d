@@ -9,6 +9,8 @@
 #include "games/PacMan.h"
 #include "games/PlarformerGame.h"
 #include "services/logger/LogManager.h"
+#include "services/hotkey/HotKeyManager.h"
+#include "services/hotkey/HotKeyActions.h"
 #include "ui/ImGuiAuto/ImGuiAuto.h"
 #include "ui/ImGuiAuto/ImGuiAutoDemo.h"
 #include <imgui.h>
@@ -73,6 +75,18 @@ namespace {
             return list;
         }();
         return descriptors;
+    }
+
+    std::string hotkeyShortcutLabel(const char* actionId) {
+        using gb2d::hotkeys::HotKeyManager;
+        if (actionId == nullptr || !HotKeyManager::isInitialized()) {
+            return {};
+        }
+        const auto* binding = HotKeyManager::binding(actionId);
+        if (binding == nullptr || !binding->valid || binding->humanReadable.empty()) {
+            return {};
+        }
+        return binding->humanReadable;
     }
 }
 
@@ -140,6 +154,25 @@ void GameWindow::switchGame(int index) {
     ensureGameInitialized();
 }
 
+void GameWindow::cycleGame(int delta) {
+    if (games_.empty() || delta == 0) {
+        return;
+    }
+    if (current_game_index_ < 0) {
+        switchGame(0);
+        return;
+    }
+
+    const int count = static_cast<int>(games_.size());
+    int nextIndex = (current_game_index_ + delta) % count;
+    if (nextIndex < 0) {
+        nextIndex += count;
+    }
+    if (nextIndex != current_game_index_) {
+        switchGame(nextIndex);
+    }
+}
+
 void GameWindow::resetCurrentGame() {
     if (current_game_) {
         current_game_->reset(rt_w_, rt_h_);
@@ -161,6 +194,30 @@ void GameWindow::render(WindowContext& ctx) {
     ensureGameSelected();
     ensureGameInitialized();
 
+    const std::string resetShortcut = hotkeyShortcutLabel(hotkeys::actions::GameReset);
+    const std::string fullscreenShortcut = hotkeyShortcutLabel(hotkeys::actions::GameToggleFullscreen);
+    const std::string exitSessionShortcut = hotkeyShortcutLabel(hotkeys::actions::FullscreenExit);
+
+    const bool hasSession = (ctx.fullscreen != nullptr);
+    const bool sessionActive = hasSession && ctx.fullscreen->isActive();
+    const bool canRequestFullscreen = (current_game_ != nullptr) && hasSession && !sessionActive;
+    const bool windowFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+
+    if (windowFocused && gb2d::hotkeys::HotKeyManager::isInitialized()) {
+        if (gb2d::hotkeys::HotKeyManager::consumeTriggered(hotkeys::actions::GameReset)) {
+            resetCurrentGame();
+        }
+        if (canRequestFullscreen && gb2d::hotkeys::HotKeyManager::consumeTriggered(hotkeys::actions::GameToggleFullscreen)) {
+            fullscreen_requested_ = true;
+        }
+        if (gb2d::hotkeys::HotKeyManager::consumeTriggered(hotkeys::actions::GameCycleNext)) {
+            cycleGame(1);
+        }
+        if (gb2d::hotkeys::HotKeyManager::consumeTriggered(hotkeys::actions::GameCyclePrev)) {
+            cycleGame(-1);
+        }
+    }
+
     // Add a button to toggle the ImGui::Auto demo
     if (ImGui::Button("ImGui::Auto Demo")) {
         show_imgui_auto_demo_ = !show_imgui_auto_demo_;
@@ -181,27 +238,40 @@ void GameWindow::render(WindowContext& ctx) {
         if (ImGui::Button("Reset")) {
             resetCurrentGame();
         }
+        if (!resetShortcut.empty() && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
+            ImGui::SetTooltip("Shortcut: %s", resetShortcut.c_str());
+        }
         ImGui::SameLine();
         if (ImGui::Button(show_imgui_auto_demo_ ? "Hide ImGui::Auto Demo" : "Show ImGui::Auto Demo")) {
             show_imgui_auto_demo_ = !show_imgui_auto_demo_;
         }
         ImGui::SameLine();
-        bool hasSession = (ctx.fullscreen != nullptr);
-        bool sessionActive = hasSession && ctx.fullscreen->isActive();
-        bool canRequestFullscreen = (current_game_ != nullptr) && hasSession && !sessionActive;
-
+        bool fullscreenClicked = false;
         if (!canRequestFullscreen) {
             ImGui::BeginDisabled();
         }
         if (ImGui::Button("Fullscreen")) {
-            fullscreen_requested_ = true;
+            fullscreenClicked = true;
         }
         if (!canRequestFullscreen) {
             ImGui::EndDisabled();
         }
+        if (fullscreenClicked && canRequestFullscreen) {
+            fullscreen_requested_ = true;
+        }
+        if (canRequestFullscreen && !fullscreenShortcut.empty() && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
+            ImGui::SetTooltip("Shortcut: %s", fullscreenShortcut.c_str());
+        }
         ImGui::SameLine();
         if (sessionActive) {
-            ImGui::TextUnformatted("Press Ctrl+W or Esc to exit");
+            std::string exitHint = "Ctrl+W";
+            if (!exitSessionShortcut.empty()) {
+                exitHint += " or " + exitSessionShortcut;
+            } else {
+                exitHint += " or Esc";
+            }
+            const std::string exitText = "Press " + exitHint + " to exit";
+            ImGui::TextUnformatted(exitText.c_str());
             if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip("Leaving fullscreen returns to the editor.");
             }

@@ -27,6 +27,8 @@ add_library(gb2d_window STATIC
   "src/ui/Windows/FilePreviewWindow.cpp"
   "src/ui/Windows/GameWindow.h"
   "src/ui/Windows/GameWindow.cpp"
+  "src/ui/Windows/HotkeysWindow.h"
+  "src/ui/Windows/HotkeysWindow.cpp"
   "src/ui/FullscreenSession.h"
   "src/ui/FullscreenSession.cpp"
 )
@@ -40,7 +42,10 @@ add_library(gb2d_imgui_auto STATIC
   "src/ui/ImGuiAuto/ImGuiAutoDemo.h"
   "src/ui/ImGuiAuto/ImGuiAutoDemo.cpp"
 )
-target_include_directories(gb2d_window PUBLIC "src")
+target_include_directories(gb2d_window PUBLIC
+  "src"
+  "thirdparty/ImHotKey"
+)
 set_property(TARGET gb2d_window PROPERTY CXX_STANDARD 20)
 target_compile_options(gb2d_window PRIVATE
   $<$<CXX_COMPILER_ID:MSVC>:/FI"${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/ImGuiColorTextEdit/imgui_compat_shim.h">
@@ -283,7 +288,26 @@ target_include_directories(gb2d_audio PUBLIC "src")
 set_property(TARGET gb2d_audio PROPERTY CXX_STANDARD 20)
 target_link_libraries(gb2d_audio PUBLIC raylib gb2d_configuration gb2d_logging)
 
-## lwlog removed
+# HotKey service library
+add_library(gb2d_hotkeys
+  "src/services/hotkey/HotKeyManager.h"
+  "src/services/hotkey/HotKeyManager.cpp"
+  "src/services/hotkey/HotKeyCatalog.h"
+  "src/services/hotkey/HotKeyCatalog.cpp"
+  "src/services/hotkey/HotKeyRegistrationBuilder.h"
+  "src/services/hotkey/HotKeyRegistrationBuilder.cpp"
+  "src/services/hotkey/HotKeyActions.h"
+  "src/services/hotkey/ShortcutUtils.h"
+  "src/services/hotkey/ShortcutUtils.cpp"
+)
+target_include_directories(gb2d_hotkeys PUBLIC
+  "src"
+  "thirdparty/ImHotKey"
+  ${raylib_SOURCE_DIR}/src
+  ${raylib_BINARY_DIR}/src
+)
+set_property(TARGET gb2d_hotkeys PROPERTY CXX_STANDARD 20)
+target_link_libraries(gb2d_hotkeys PUBLIC raylib nlohmann_json::nlohmann_json gb2d_configuration gb2d_logging)
 
 # ImGuiFileDialog
 FetchContent_Declare(
@@ -369,8 +393,8 @@ target_link_libraries(rlImGui PUBLIC raylib imgui)
 target_link_libraries(gb2d_imgui_auto PUBLIC imgui nlohmann_json::nlohmann_json)
 
 # Window library depends on ImGui, file dialog, raylib
-target_link_libraries(gb2d_window PUBLIC imgui imguifiledialog raylib gb2d_logging imguicolortextedit nlohmann_json::nlohmann_json)
+target_link_libraries(gb2d_window PUBLIC imgui imguifiledialog raylib gb2d_logging imguicolortextedit nlohmann_json::nlohmann_json gb2d_hotkeys)
 
-target_link_libraries(GameBuilder2d PRIVATE raylib rlImGui imgui imguifiledialog gb2d_configuration gb2d_window gb2d_logging gb2d_texture gb2d_audio gb2d_imgui_auto)
+target_link_libraries(GameBuilder2d PRIVATE raylib rlImGui imgui imguifiledialog gb2d_configuration gb2d_window gb2d_logging gb2d_texture gb2d_audio gb2d_imgui_auto gb2d_hotkeys)
 
 # TODO: Add tests and install targets if needed.

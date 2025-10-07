@@ -26,8 +26,32 @@
 #include "ui/Windows/CodeEditorWindow.h"
 #include "ui/Windows/FilePreviewWindow.h"
 #include "ui/Windows/GameWindow.h"
+#include "ui/Windows/HotkeysWindow.h"
+#include "services/hotkey/HotKeyManager.h"
+#include "services/hotkey/HotKeyActions.h"
+#include <string>
 
 namespace gb2d {
+
+namespace {
+
+std::string hotkeyShortcutLabel(const char* actionId) {
+    using gb2d::hotkeys::HotKeyManager;
+    if (actionId == nullptr || !HotKeyManager::isInitialized()) {
+        return {};
+    }
+    const auto* binding = HotKeyManager::binding(actionId);
+    if (binding == nullptr || !binding->valid || binding->humanReadable.empty()) {
+        return {};
+    }
+    return binding->humanReadable;
+}
+
+const char* shortcutArg(const std::string& value) {
+    return value.empty() ? nullptr : value.c_str();
+}
+
+} // namespace
 
 static void RegisterBuiltinWindows(WindowRegistry& reg) {
     // Console Log window
@@ -63,6 +87,14 @@ static void RegisterBuiltinWindows(WindowRegistry& reg) {
         return std::make_unique<GameWindow>();
     };
     reg.registerType(std::move(gameDesc));
+
+    WindowTypeDesc hotkeysDesc;
+    hotkeysDesc.typeId = "hotkeys";
+    hotkeysDesc.displayName = "Hotkeys";
+    hotkeysDesc.factory = [](WindowContext&) -> std::unique_ptr<IWindow> {
+        return std::make_unique<HotkeysWindow>();
+    };
+    reg.registerType(std::move(hotkeysDesc));
 }
 
 WindowManager::WindowManager() {
@@ -87,6 +119,7 @@ void WindowManager::setFullscreenSession(FullscreenSession* session) {
 void WindowManager::shutdown() {
     if (shutting_down_) return;
     shutting_down_ = true;
+    syncHotkeySuppression(nullptr, false);
     // Modular windows own their resources; just clear containers
     windows_.clear();
     undock_requests_.clear();
@@ -592,14 +625,133 @@ void WindowManager::setEditorFullscreen(bool enable) {
     gb2d::logging::LogManager::info("Editor fullscreen disabled: {}x{}", targetWidth, targetHeight);
 }
 
+void WindowManager::openFileDialog(const char* dialogTitle, const char* filters) {
+    IGFD::FileDialogConfig cfg;
+    cfg.path = last_folder_.empty() ? std::string(".") : last_folder_;
+    ImGuiFileDialog::Instance()->OpenDialog("FileOpenDlg", dialogTitle, filters, cfg);
+}
+
+void WindowManager::syncHotkeySuppression(const ImGuiIO* imguiIO, bool imguiFrameActive) {
+    using gb2d::hotkeys::HotKeyManager;
+    using gb2d::hotkeys::HotKeySuppressionReason;
+
+    if (!HotKeyManager::isInitialized()) {
+        hotkey_suppressed_text_input_ = false;
+        hotkey_suppressed_modal_ = false;
+        return;
+    }
+
+    auto applySuppression = [&](HotKeySuppressionReason reason, bool shouldBeActive, bool& flag) {
+        if (shouldBeActive == flag) {
+            return;
+        }
+        if (shouldBeActive) {
+            HotKeyManager::pushSuppression(reason);
+        } else {
+            HotKeyManager::popSuppression(reason);
+        }
+        flag = shouldBeActive;
+    };
+
+    const bool wantsKeyboard = imguiIO && imguiIO->WantCaptureKeyboard;
+    bool anyItemActive = false;
+    if (imguiFrameActive && ImGui::GetCurrentContext() != nullptr) {
+        anyItemActive = ImGui::IsAnyItemActive();
+    }
+    const bool textInputActive = imguiIO && (imguiIO->WantTextInput || (wantsKeyboard && anyItemActive));
+    applySuppression(HotKeySuppressionReason::TextInput, textInputActive, hotkey_suppressed_text_input_);
+
+    bool modalActive = false;
+    if (imguiFrameActive && ImGui::GetCurrentContext() != nullptr) {
+        modalActive = ImGui::GetTopMostPopupModal() != nullptr;
+    }
+    applySuppression(HotKeySuppressionReason::ModalDialog, modalActive, hotkey_suppressed_modal_);
+
+    if (!imguiIO && !imguiFrameActive) {
+        applySuppression(HotKeySuppressionReason::TextInput, false, hotkey_suppressed_text_input_);
+        applySuppression(HotKeySuppressionReason::ModalDialog, false, hotkey_suppressed_modal_);
+    }
+}
+
+void WindowManager::processGlobalHotkeys() {
+    using gb2d::hotkeys::HotKeyManager;
+    using namespace gb2d::hotkeys::actions;
+
+    if (!HotKeyManager::isInitialized()) {
+        return;
+    }
+
+    if (HotKeyManager::isSuppressed()) {
+        return;
+    }
+
+    auto spawnOrFocusWindow = [this](const char* typeId, const std::string& defaultTitle) {
+        ManagedWindow* existing = findByTypeId(typeId);
+        if (!existing) {
+            std::string id = spawnWindowByType(typeId, defaultTitle);
+            if (!id.empty()) {
+                focus_request_window_id_ = id;
+            }
+        } else {
+            existing->open = true;
+            focus_request_window_id_ = existing->id;
+        }
+    };
+
+    const bool sessionActive = fullscreen_session_ && fullscreen_session_->isActive();
+
+    if (HotKeyManager::consumeTriggered(OpenFileDialog)) {
+        constexpr const char* kAllFileFilters = "Images{.png,.jpg,.jpeg,.bmp,.gif}, Text{.txt,.md,.log}, Code{.h,.hpp,.c,.cpp,.cmake}, .*";
+        openFileDialog("Open File", kAllFileFilters);
+    }
+
+    if (HotKeyManager::consumeTriggered(OpenImageDialog)) {
+        constexpr const char* kImageFilters = "Images{.png,.jpg,.jpeg,.bmp,.gif,.tga,.dds,.psd,.hdr}";
+        openFileDialog("Open Image", kImageFilters);
+    }
+
+    if (HotKeyManager::consumeTriggered(ToggleEditorFullscreen)) {
+        if (sessionActive) {
+            addToast("Exit game fullscreen before toggling the editor view.");
+        } else {
+            toggleEditorFullscreen();
+        }
+    }
+
+    if (HotKeyManager::consumeTriggered(FocusTextEditor)) {
+        spawnOrFocusWindow("code-editor", "Text Editor");
+    }
+
+    if (HotKeyManager::consumeTriggered(ShowConsole)) {
+        spawnOrFocusWindow("console-log", "Console");
+    }
+
+    if (HotKeyManager::consumeTriggered(SpawnDockWindow)) {
+        createWindow("Window " + std::to_string(next_id_));
+    }
+
+    if (HotKeyManager::consumeTriggered(OpenHotkeySettings)) {
+        spawnOrFocusWindow("hotkeys", "Hotkeys");
+    }
+
+    if (HotKeyManager::consumeTriggered(SaveLayout)) {
+        saveLayout();
+    }
+
+    if (HotKeyManager::consumeTriggered(OpenLayoutManager)) {
+        addToast("Layout Manager UI not implemented yet.");
+    }
+}
+
 void WindowManager::renderUI() {
     if (shutting_down_) return; // guard against late calls during teardown
     ImGuiIO& io = ImGui::GetIO();
+    updateToasts(io.DeltaTime);
+    processGlobalHotkeys();
     if (!(io.ConfigFlags & ImGuiConfigFlags_DockingEnable)) {
         ImGui::TextUnformatted("Docking is disabled. Enable ImGuiConfigFlags_DockingEnable.");
         return;
     }
-    updateToasts(io.DeltaTime);
 
     ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar |
         ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
@@ -632,11 +784,13 @@ void WindowManager::renderUI() {
                 ImGuiFileDialog::Instance()->OpenDialog("FileOpenDlg", dialogTitle, filters, cfg);
             };
 
-            if (ImGui::MenuItem("Open File...")) {
+            const std::string openFileShortcut = hotkeyShortcutLabel(hotkeys::actions::OpenFileDialog);
+            if (ImGui::MenuItem("Open File...", shortcutArg(openFileShortcut))) {
                 const char* filters = "Images{.png,.jpg,.jpeg,.bmp,.gif}, Text{.txt,.md,.log}, Code{.h,.hpp,.c,.cpp,.cmake}, .*";
                 launchFileDialog("Open File", filters);
             }
-            if (ImGui::MenuItem("Open Image...")) {
+            const std::string openImageShortcut = hotkeyShortcutLabel(hotkeys::actions::OpenImageDialog);
+            if (ImGui::MenuItem("Open Image...", shortcutArg(openImageShortcut))) {
                 const char* imageFilters = "Images{.png,.jpg,.jpeg,.bmp,.gif,.tga,.dds,.psd,.hdr}";
                 launchFileDialog("Open Image", imageFilters);
             }
@@ -689,7 +843,8 @@ void WindowManager::renderUI() {
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("GameBuilder")) {
-            if (ImGui::MenuItem("Text Editor")) {
+            const std::string focusEditorShortcut = hotkeyShortcutLabel(hotkeys::actions::FocusTextEditor);
+            if (ImGui::MenuItem("Text Editor", shortcutArg(focusEditorShortcut))) {
                 ManagedWindow* existing = findByTypeId("code-editor");
                 if (!existing) {
                     std::string id = spawnWindowByType("code-editor", std::string("Text Editor"));
@@ -701,7 +856,8 @@ void WindowManager::renderUI() {
             }
             bool sessionActive = fullscreen_session_ && fullscreen_session_->isActive();
             bool editorFullscreen = IsWindowFullscreen();
-            if (ImGui::MenuItem("Editor Fullscreen", nullptr, editorFullscreen, !sessionActive)) {
+            const std::string toggleEditorFullscreenShortcut = hotkeyShortcutLabel(hotkeys::actions::ToggleEditorFullscreen);
+            if (ImGui::MenuItem("Editor Fullscreen", shortcutArg(toggleEditorFullscreenShortcut), editorFullscreen, !sessionActive)) {
                 toggleEditorFullscreen();
             }
             if (sessionActive && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
@@ -710,10 +866,12 @@ void WindowManager::renderUI() {
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Windows")) {
-            if (ImGui::MenuItem("New Window")) {
+            const std::string newWindowShortcut = hotkeyShortcutLabel(hotkeys::actions::SpawnDockWindow);
+            if (ImGui::MenuItem("New Window", shortcutArg(newWindowShortcut))) {
                 createWindow("Window " + std::to_string(next_id_));
             }
-            if (ImGui::MenuItem("Console")) {
+            const std::string consoleShortcut = hotkeyShortcutLabel(hotkeys::actions::ShowConsole);
+            if (ImGui::MenuItem("Console", shortcutArg(consoleShortcut))) {
                 // Spawn or focus the modular Console window (registry-driven)
                 ManagedWindow* existing = findByTypeId("console-log");
                 if (!existing) {
@@ -776,16 +934,45 @@ void WindowManager::renderUI() {
             }
             ImGui::EndMenu();
         }
+        if (ImGui::BeginMenu("Settings")) {
+            const std::string hotkeysShortcut = hotkeyShortcutLabel(hotkeys::actions::OpenHotkeySettings);
+            if (ImGui::MenuItem("Hotkeys...", shortcutArg(hotkeysShortcut))) {
+                ManagedWindow* existing = findByTypeId("hotkeys");
+                if (!existing) {
+                    std::string id = spawnWindowByType("hotkeys", std::string("Hotkeys"));
+                    if (!id.empty()) {
+                        focus_request_window_id_ = id;
+                    }
+                } else {
+                    existing->open = true;
+                    focus_request_window_id_ = existing->id;
+                }
+            }
+            ImGui::EndMenu();
+        }
         if (ImGui::BeginMenu("Layouts")) {
             static char nameBuf[64] = {0};
             ImGui::InputText("Name", nameBuf, IM_ARRAYSIZE(nameBuf));
             ImGui::SameLine();
             bool hasName = nameBuf[0] != '\0';
-            if (!hasName) ImGui::BeginDisabled();
+            bool saveClicked = false;
+            if (!hasName) {
+                ImGui::BeginDisabled();
+            }
             if (ImGui::Button("Save")) {
+                saveClicked = true;
+            }
+            if (!hasName) {
+                ImGui::EndDisabled();
+            }
+            const std::string saveLayoutShortcut = hotkeyShortcutLabel(hotkeys::actions::SaveLayout);
+            if (!saveLayoutShortcut.empty()) {
+                ImGui::SameLine();
+                ImGui::TextDisabled("%s", saveLayoutShortcut.c_str());
+            }
+            if (saveClicked && hasName) {
                 saveLayout(std::string(nameBuf));
             }
-            if (!hasName) ImGui::EndDisabled();
 
             // List existing layouts
             namespace fs = std::filesystem;

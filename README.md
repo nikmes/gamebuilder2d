@@ -23,6 +23,7 @@ cd gamebuilder2d
   - Syntax-highlighted code editor with multi-tab support and ImGuiFileDialog integration
   - File previewer for text and common image formats
   - Space Invaders playground rendered into a raylib `RenderTexture`
+- **Customizable hotkeys** managed by a centralized HotKeyManager with conflict detection, text-input suppression, and in-app editing.
 - **Configuration service** backed by JSON, env overrides (`GB2D_*`), validation, and change notifications.
 - **Logging service** (spdlog + ImGui sink) reused by the UI and runtime systems.
 - **Composable static libraries**: `gb2d_window`, `gb2d_configuration`, and `gb2d_logging` feed into the main executable.
@@ -109,6 +110,7 @@ On WSL, reconfigure with `-DBUILD_TESTING=ON` or use the `windows-vs2022-x64-rel
 - Default config path: `config.json` in the repo root. Override with `GB2D_CONFIG_DIR`.
 - Keys use dotted syntax (`window.fullscreen`). Callers can also pass `window::fullscreen`; the service normalizes namespaces.
 - Environment overrides: `GB2D_<SECTION>__<KEY>=value` (double underscore becomes dot). Values auto-detect booleans, integers, and floats.
+- Hotkey overrides live under the `input.hotkeys` array. Set `shortcut` to `null` to disable an action or edit values directly when scripting deployments.
 - Layout exports live in `out/layouts/<name>.{wm.txt,imgui.ini,layout.json}`. The manager restores `last` automatically on startup and backs up corrupted layouts.
 
 ## Manager quickstarts
@@ -122,6 +124,15 @@ On WSL, reconfigure with `-DBUILD_TESTING=ON` or use the `windows-vs2022-x64-rel
 - Export the active profile to diagnostics tools with `exportCompact()`.
 
 📚 Reference: [ConfigurationManager overview](GameBuilder2d/docs/configuration-manager.md)
+
+### HotKeyManager
+
+- Initializes alongside other services; call `HotKeyManager::tick()` once per frame before letting ImGui consume input.
+- Edit shortcuts live through **Window → Hotkeys** (default shortcut `Ctrl+Alt+K`); Apply pushes changes immediately and Save persists them to `config.json`.
+- Programmatic APIs (`setBinding`, `clearBinding`, `restoreDefaultBinding`, `registerActions`) let features add or tweak shortcuts at runtime.
+- Persistence lives under `input.hotkeys`; setting a `shortcut` field to `null` disables the action until reassigned.
+
+📚 Reference: [HotKeyManager & Customizable Shortcuts](GameBuilder2d/docs/hotkey-manager.md)
 
 ### TextureManager
 

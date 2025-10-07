@@ -6,6 +6,7 @@
 #include "rlImGui.h"
 #include "imgui.h"
 #include "services/window/WindowManager.h"
+#include "services/hotkey/HotKeyManager.h"
 #include "ui/FullscreenSession.h"
 #include <memory>
 #include <algorithm>
@@ -82,6 +83,10 @@ int main()
     gb2d::textures::TextureManager::init();
     gb2d::audio::AudioManager::init();
 
+    if (!gb2d::hotkeys::HotKeyManager::initialize()) {
+        gb2d::logging::LogManager::error("HotKeyManager failed to initialize; shortcuts will be unavailable.");
+    }
+
     // Enable docking in ImGui (after context is created)
     ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
@@ -91,15 +96,21 @@ int main()
 
     while (!WindowShouldClose())
     {
-    float dt = GetFrameTime();
-    gb2d::audio::AudioManager::tick(dt);
+        float dt = GetFrameTime();
+        gb2d::audio::AudioManager::tick(dt);
+
         BeginDrawing();
 
         if (fullscreenSession.isActive()) {
+            wm.syncHotkeySuppression(nullptr, false);
+            gb2d::hotkeys::HotKeyManager::tick();
             fullscreenSession.tick(dt);
         } else {
             ClearBackground(DARKGRAY);
             rlImGuiBegin();
+            ImGuiIO& io = ImGui::GetIO();
+            wm.syncHotkeySuppression(&io, true);
+            gb2d::hotkeys::HotKeyManager::tick();
             wm.renderUI();
             rlImGuiEnd();
         }
@@ -124,6 +135,7 @@ int main()
     // Save layout before shutting down ImGui
     fullscreenSession.requestStop();
     wm.saveLayout();
+    gb2d::hotkeys::HotKeyManager::shutdown();
     gb2d::audio::AudioManager::shutdown();
     gb2d::textures::TextureManager::shutdown();
     rlImGuiShutdown();
