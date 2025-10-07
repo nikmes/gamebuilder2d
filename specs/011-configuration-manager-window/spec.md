@@ -70,6 +70,18 @@ As a GameBuilder2d user, I can open a Configuration window that presents setting
 - Runtime values flow through `ConfigurationManager::valueFor(fieldId)` and `ConfigurationManager::setValue(fieldId, value, ValidationMode)` ensuring validation is centralized. The UI never mutates JSON directly.
 - Schema definitions live alongside the default configuration to guarantee parity. Any new config field requires updating both the defaults and the schema descriptor within the same module.
 
+#### Apply vs Save UX & backup expectations *(T102)*
+- **Toolbar actions**: Present two primary buttons — **Apply** (tooltip *"Update the running editor without saving to disk"*) and **Save** (tooltip *"Apply changes and write to config.json"*). Both remain disabled while validation errors exist.
+- **Dirty prompts**:
+	- Closing with unapplied edits triggers *"Discard Configuration Changes?"* modal with actions `Apply`, `Discard`, `Cancel` and body *"You have unapplied configuration changes. Apply them now, discard them, or cancel to keep editing."*
+	- Closing with applied-but-unsaved edits triggers *"Save Configuration Changes?"* modal with actions `Save`, `Discard`, `Cancel` and body *"You applied changes that haven't been saved to disk. Save them now, discard them, or cancel to keep editing."*
+- **Status messaging**:
+	- Apply success toast: *"Configuration applied."*
+	- Save success toast: *"Configuration saved to config.json."*
+	- Failure toast template: *"Configuration save failed: {reason}. Your changes are still staged."*
+- **Backup behavior**: First successful Save per session emits a `config.backup.json` snapshot beside the primary file before writing. Subsequent saves update both files atomically. Toast: *"Backup created: config.backup.json"* on initial backup.
+- **Autosave policy**: No automatic saves. Apply updates runtime state but retains dirty markers until Save completes, encouraging explicit persistence.
+
 ---
 
 ## Requirements *(mandatory)*

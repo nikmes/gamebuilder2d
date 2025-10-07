@@ -2,7 +2,7 @@
 
 ## Clarifications & Preparations
 - [x] T101 — Approve schema ownership model and metadata format
-- [ ] T102 — Finalize Apply vs Save UX copy, prompts, and backup expectations
+- [x] T102 — Finalize Apply vs Save UX copy, prompts, and backup expectations
 - [ ] T103 — Inventory existing config sections/fields and identify missing documentation
 
 ## Schema & Services
