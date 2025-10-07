@@ -22,6 +22,7 @@ add_executable(config_tests
   unit/config/test_export.cpp
   unit/config/test_boundaries.cpp
   unit/config/test_validate.cpp
+  unit/config/test_editor_state.cpp
   integration/test_config_e2e.cpp
 )
 target_include_directories(config_tests PRIVATE

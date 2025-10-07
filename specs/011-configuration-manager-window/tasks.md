@@ -6,13 +6,13 @@
 - [x] T103 — Inventory existing config sections/fields and identify missing documentation
 
 ## Schema & Services
-- [ ] T104 — Introduce `ConfigurationSchema` structures and builder utilities in `ConfigurationManager`
-- [ ] T105 — Populate schema metadata for current sections (`window`, `input`, `audio`, `debug`, `hotkeys`)
-- [ ] T106 — Expose query/validation APIs and change notification hooks for UI consumers
+- [x] T104 — Introduce `ConfigurationSchema` structures and builder utilities in `ConfigurationManager`
+- [x] T105 — Populate schema metadata for current sections (`window`, `input`, `audio`, `debug`, `hotkeys`)
+- [x] T106 — Expose query/validation APIs and change notification hooks for UI consumers
 
 ## Editor State Management
-- [ ] T107 — Implement editor-side field/section state models with dirty tracking and revert helpers
-- [ ] T108 — Wire validation pipeline (on-edit, on-apply) using schema-provided rules
+- [x] T107 — Implement editor-side field/section state models with dirty tracking and revert helpers
+- [x] T108 — Wire validation pipeline (on-edit, on-apply) using schema-provided rules
 - [ ] T109 — Add lightweight undo/redo (at least single-level revert per field/section)
 
 ## UI & UX

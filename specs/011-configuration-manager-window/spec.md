@@ -92,6 +92,22 @@ As a GameBuilder2d user, I can open a Configuration window that presents setting
 - **version** — internal integer used for migration. Should remain hidden/readonly in UI with tooltip explaining purpose.
 - **Future/unknown keys** — emphasize that the Configuration window must surface unrecognized keys in a "Misc"/JSON editor to preserve customizations (ties to FR-010).
 
+#### Schema coverage snapshot *(T105)*
+- `window` — slider-backed width/height (640–7680px and 480–4320px) plus a fullscreen toggle with contextual tooltip.
+- `fullscreen` — advanced section capturing monitor overrides and optional render-target dimensions (0 ⇒ auto).
+- `ui` — enum-driven theme selector (`dark`, `light`) with friendly labels for future palette expansion.
+- `textures` — search path list editor, filter enum (nearest/bilinear/trilinear/anisotropic), and advanced knobs for mipmaps, memory budgets, and placeholder assets.
+- `audio` — volume sliders (0–1 with 0.01 granularity), enable toggle, concurrency ceiling, search paths, and advanced preload lists.
+- `input.hotkeys` — dedicated child section surfaced via a specialized hotkey table editor seeded with defaults.
+- `metadata.version` — hidden, read-only integer mirroring `kCurrentConfigVersion` to gate migrations.
+- `debug` — reserved placeholder (hidden) to host future diagnostic toggles once they exist.
+
+#### Editor state snapshot *(T107)*
+- `ConfigurationEditorState` materializes the schema into mutable `ConfigSectionState` / `ConfigFieldState` nodes backed by the current JSON document.
+- Field state captures original, working, and default values, exposes dirty/valid flags, and offers revert helpers to baseline or default.
+- Section state aggregates child dirtiness/invalidity counts and supplies bulk revert helpers (`revertSection`, `revertAll`).
+- Validation slots exist per field (`FieldValidationState`) for T108 to inject messages without coupling UI directly to validation internals.
+
 ---
 
 ## Requirements *(mandatory)*

@@ -259,6 +259,10 @@ target_link_libraries(gb2d_logging PUBLIC spdlog::spdlog)
 add_library(gb2d_configuration
   "src/services/configuration/ConfigurationManager.h"
   "src/services/configuration/ConfigurationManager.cpp"
+  "src/services/configuration/ConfigurationEditorState.h"
+  "src/services/configuration/ConfigurationEditorState.cpp"
+  "src/services/configuration/ConfigurationSchema.h"
+  "src/services/configuration/ConfigurationSchema.cpp"
   "src/services/configuration/paths.h"
   "src/services/configuration/paths.cpp"
   "src/services/configuration/json_io.h"

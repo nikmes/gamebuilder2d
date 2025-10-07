@@ -1,9 +1,12 @@
 #pragma once
 #include <string>
+#include <string_view>
 #include <vector>
 #include <cstdint>
 #include <functional>
 #include <nlohmann/json_fwd.hpp>
+
+#include "ConfigurationSchema.h"
 
 namespace gb2d {
 class ConfigurationManager {
@@ -37,10 +40,22 @@ public:
     // Expose the raw JSON document for read-only consumers (e.g., hotkey loader).
     [[nodiscard]] static const nlohmann::json& raw();
     static void pushReloadHook(const OnConfigReloadedHook& hook);
+
+    [[nodiscard]] static const ConfigurationSchema& schema() noexcept;
+    [[nodiscard]] static const ConfigSectionDesc* findSection(std::string_view id) noexcept;
+    [[nodiscard]] static const ConfigFieldDesc* findField(std::string_view id) noexcept;
+    [[nodiscard]] static ConfigValue valueFor(std::string_view id, ConfigValue fallback = {}) noexcept;
+
+    static FieldValidationState validateFieldValue(const ConfigFieldDesc& desc,
+                                                   const ConfigValue& value,
+                                                   ValidationPhase phase = ValidationPhase::OnEdit);
+    static FieldValidationState validateFieldValue(std::string_view id,
+                                                   const ConfigValue& value,
+                                                   ValidationPhase phase = ValidationPhase::OnEdit);
     
-        struct OnConfigReloadedHook {
-            std::string name;
-            std::function<void()> callback;
-        };
+    struct OnConfigReloadedHook {
+        std::string name;
+        std::function<void()> callback;
+    };
 };
 }
