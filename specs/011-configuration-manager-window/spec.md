@@ -49,6 +49,27 @@ As a GameBuilder2d user, I can open a Configuration window that presents setting
 - **Diff preview**: Before saving, users can open a side-by-side diff of current vs pending JSON. Out-of-scope for v1, but log an enhancement item.
 - **Backup policy**: On first save in a session, the system writes `config.backup.json` to allow manual recovery. Optional for v1; treat as stretch.
 
+#### Schema ownership & metadata format *(T101)*
+- `ConfigurationManager` owns the authoritative schema definition. The schema is constructed during service initialization using constexpr-friendly builders and remains immutable at runtime.
+- `ConfigurationSchema` exposes a tree of `ConfigSectionDesc` objects, each with:
+	- `id` (string key matching the JSON section),
+	- `label` (localized display string),
+	- `description`,
+	- `fields` (vector of `ConfigFieldDesc`),
+	- `children` (optional vector for nested sections), and
+	- `flags` (bitmask: `Advanced`, `Experimental`, `Hidden`).
+- `ConfigFieldDesc` captures field metadata:
+	- `id` (JSON key or dotted path),
+	- `type` (enum: `Boolean`, `Integer`, `Float`, `Enum`, `String`, `Path`, `List`, `JsonBlob`, `Hotkeys`, etc.),
+	- `label` / `description`,
+	- `defaultValue` (variant),
+	- `validation` (struct with optional `min`, `max`, `regex`, `enumValues`, `pathMode`, `step`, `precision`),
+	- `advanced` / `experimental` flags,
+	- `uiHints` (map for control-specific hints such as `placeholder`, `multiline`, `fileFilters`).
+- The schema API returns a const reference (`const ConfigurationSchema& schema() noexcept`) and field-level helper queries (e.g., `findSection`, `findField`). UI code consumes only the descriptors and delegates validation to the manager.
+- Runtime values flow through `ConfigurationManager::valueFor(fieldId)` and `ConfigurationManager::setValue(fieldId, value, ValidationMode)` ensuring validation is centralized. The UI never mutates JSON directly.
+- Schema definitions live alongside the default configuration to guarantee parity. Any new config field requires updating both the defaults and the schema descriptor within the same module.
+
 ---
 
 ## Requirements *(mandatory)*

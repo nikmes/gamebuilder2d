@@ -1,7 +1,7 @@
 # Task Breakdown — Configuration Management Window
 
 ## Clarifications & Preparations
-- [ ] T101 — Approve schema ownership model and metadata format
+- [x] T101 — Approve schema ownership model and metadata format
 - [ ] T102 — Finalize Apply vs Save UX copy, prompts, and backup expectations
 - [ ] T103 — Inventory existing config sections/fields and identify missing documentation
 
