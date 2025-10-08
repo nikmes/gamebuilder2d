@@ -163,3 +163,54 @@ TEST_CASE("ConfigurationEditorState validates enum and list fields", "[config][e
     CHECK(searchPaths->validation.valid);
     CHECK(searchPaths->validation.message.empty());
 }
+
+TEST_CASE("ConfigurationEditorState supports field undo/redo", "[config][editor-state]") {
+    resetConfiguration();
+    auto state = ConfigurationEditorState::fromCurrent();
+
+    REQUIRE(state.setFieldValue("window.height", ConfigValue{static_cast<std::int64_t>(900)}));
+    auto* height = state.field("window.height");
+    REQUIRE(height != nullptr);
+    REQUIRE(height->isDirty());
+
+    REQUIRE(state.undoField("window.height"));
+    CHECK(std::get<std::int64_t>(height->currentValue) == 720);
+    CHECK_FALSE(height->isDirty());
+
+    REQUIRE(state.redoField("window.height"));
+    CHECK(std::get<std::int64_t>(height->currentValue) == 900);
+    CHECK(height->isDirty());
+
+    REQUIRE(state.undoField("window.height"));
+    REQUIRE(state.setFieldValue("window.height", ConfigValue{static_cast<std::int64_t>(950)}));
+    CHECK_FALSE(state.redoField("window.height"));
+    CHECK(std::get<std::int64_t>(height->currentValue) == 950);
+}
+
+TEST_CASE("ConfigurationEditorState supports section undo/redo", "[config][editor-state]") {
+    resetConfiguration();
+    auto state = ConfigurationEditorState::fromCurrent();
+
+    REQUIRE(state.setFieldValue("audio.master_volume", ConfigValue{0.25}));
+    REQUIRE(state.setFieldValue("audio.music_volume", ConfigValue{0.45}));
+
+    auto* master = state.field("audio.master_volume");
+    auto* music = state.field("audio.music_volume");
+    REQUIRE(master != nullptr);
+    REQUIRE(music != nullptr);
+
+    REQUIRE(state.undoSection("audio"));
+    CHECK(std::get<double>(master->currentValue) == Approx(1.0));
+    CHECK(std::get<double>(music->currentValue) == Approx(1.0));
+
+    REQUIRE(state.redoSection("audio"));
+    CHECK(std::get<double>(master->currentValue) == Approx(0.25));
+    CHECK(std::get<double>(music->currentValue) == Approx(0.45));
+
+    state.undoAll();
+    CHECK(std::get<double>(master->currentValue) == Approx(1.0));
+
+    state.redoAll();
+    CHECK(std::get<double>(master->currentValue) == Approx(0.25));
+    CHECK(std::get<double>(music->currentValue) == Approx(0.45));
+}

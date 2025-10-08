@@ -5,7 +5,7 @@ namespace gb2d::hotkeys {
 
 HotKeyRegistration buildDefaultCatalog() {
     HotKeyRegistrationBuilder builder;
-    builder.reserve(21);
+    builder.reserve(22);
 
     builder.withDefaults("File", "Global");
     builder.addWithDefaults(actions::OpenFileDialog,
@@ -36,6 +36,10 @@ HotKeyRegistration buildDefaultCatalog() {
                             "Create a new empty dockable window.");
 
     builder.withDefaults("Settings", "Global");
+    builder.addWithDefaults(actions::OpenConfigurationWindow,
+                            "Open Configuration",
+                            "Ctrl+,",
+                            "Open the Configuration window for editor settings.");
     builder.addWithDefaults(actions::OpenHotkeySettings,
                             "Open Hotkey Settings",
                             "Ctrl+Alt+K",

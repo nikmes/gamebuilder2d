@@ -14,6 +14,145 @@ namespace {
 
 using nlohmann::json;
 
+bool eraseJsonPath(json& target, std::string_view path) {
+    if (!target.is_object() || path.empty()) {
+        return false;
+    }
+
+    json* current = &target;
+    std::vector<std::pair<json*, std::string>> stack;
+    std::size_t start = 0;
+    while (start < path.size()) {
+        const std::size_t dot = path.find('.', start);
+        const std::size_t length = dot == std::string_view::npos ? path.size() - start : dot - start;
+        std::string key(path.substr(start, length));
+        if (!current->is_object()) {
+            return false;
+        }
+        auto it = current->find(key);
+        if (it == current->end()) {
+            return false;
+        }
+        stack.emplace_back(current, key);
+        current = &(*it);
+        if (dot == std::string_view::npos) {
+            break;
+        }
+        start = dot + 1;
+    }
+
+    if (stack.empty()) {
+        return false;
+    }
+
+    auto& [leafParent, leafKey] = stack.back();
+    if (!leafParent->is_object()) {
+        return false;
+    }
+    auto leafIt = leafParent->find(leafKey);
+    if (leafIt == leafParent->end()) {
+        return false;
+    }
+    leafParent->erase(leafIt);
+
+    for (auto it = stack.rbegin(); it != stack.rend(); ++it) {
+        json* parent = it->first;
+        const std::string& key = it->second;
+        if (!parent->is_object()) {
+            continue;
+        }
+        auto childIt = parent->find(key);
+        if (childIt == parent->end()) {
+            continue;
+        }
+        if ((childIt->is_object() || childIt->is_array()) && childIt->empty()) {
+            parent->erase(childIt);
+        }
+    }
+    return true;
+}
+
+void pruneEmptyContainers(json& value) {
+    if (value.is_object()) {
+        for (auto it = value.begin(); it != value.end();) {
+            pruneEmptyContainers(*it);
+            if ((it->is_object() || it->is_array()) && it->empty()) {
+                it = value.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    } else if (value.is_array()) {
+        for (auto it = value.begin(); it != value.end();) {
+            pruneEmptyContainers(*it);
+            if ((it->is_object() || it->is_array()) && it->empty()) {
+                it = value.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+}
+
+json buildUnknownEntries(const json& document, const ConfigurationSchema& schema) {
+    json unknown = document.is_object() ? document : json::object();
+    schema.forEachField([&](const ConfigFieldDesc& field, const ConfigSectionDesc&) {
+        (void)eraseJsonPath(unknown, field.id);
+    });
+    pruneEmptyContainers(unknown);
+    if (!unknown.is_object() || unknown.empty()) {
+        return json::object();
+    }
+    return unknown;
+}
+
+json& ensureJsonPath(json& target, std::string_view path) {
+    if (!target.is_object()) {
+        target = json::object();
+    }
+
+    json* current = &target;
+    std::size_t start = 0;
+    while (start < path.size()) {
+        const std::size_t dot = path.find('.', start);
+        const std::size_t length = dot == std::string_view::npos ? path.size() - start : dot - start;
+        std::string key(path.substr(start, length));
+        if (!current->is_object()) {
+            *current = json::object();
+        }
+        current = &((*current)[key]);
+        if (dot == std::string_view::npos) {
+            break;
+        }
+        start = dot + 1;
+    }
+    return *current;
+}
+
+struct ConfigValueToJson {
+    json operator()(std::monostate) const { return json(nullptr); }
+    json operator()(bool value) const { return json(value); }
+    json operator()(std::int64_t value) const { return json(value); }
+    json operator()(double value) const { return json(value); }
+    json operator()(const std::string& value) const { return json(value); }
+    json operator()(const std::vector<std::string>& value) const { return json(value); }
+    json operator()(const json& value) const { return value; }
+};
+
+void writeSectionToJson(const ConfigSectionState& section, json& document) {
+    for (const auto& field : section.fields) {
+        if (!field.descriptor) {
+            continue;
+        }
+        json value = std::visit(ConfigValueToJson{}, field.currentValue);
+        json& slot = ensureJsonPath(document, field.descriptor->id);
+        slot = std::move(value);
+    }
+    for (const auto& child : section.children) {
+        writeSectionToJson(child, document);
+    }
+}
+
 struct ConfigValueEquality {
     template <typename T>
     bool operator()(const T& lhs, const ConfigValue& rhs) const {
@@ -202,6 +341,7 @@ ConfigFieldState buildFieldState(const json& document, const ConfigFieldDesc& fi
     }
     state.currentValue = state.originalValue;
     state.validation = FieldValidationState{};
+    state.clearHistory();
     return state;
 }
 
@@ -241,6 +381,38 @@ bool revertSectionFieldsToDefault(ConfigSectionState& section) {
     return changed;
 }
 
+void commitSectionState(ConfigSectionState& section) {
+    for (auto& field : section.fields) {
+        field.originalValue = field.currentValue;
+        field.clearHistory();
+    }
+    for (auto& child : section.children) {
+        commitSectionState(child);
+    }
+}
+
+bool undoSectionHistory(ConfigSectionState& section) {
+    bool changed = false;
+    for (auto& field : section.fields) {
+        changed |= field.undo();
+    }
+    for (auto& child : section.children) {
+        changed |= undoSectionHistory(child);
+    }
+    return changed;
+}
+
+bool redoSectionHistory(ConfigSectionState& section) {
+    bool changed = false;
+    for (auto& field : section.fields) {
+        changed |= field.redo();
+    }
+    for (auto& child : section.children) {
+        changed |= redoSectionHistory(child);
+    }
+    return changed;
+}
+
 } // namespace
 
 bool ConfigFieldState::isDirty() const {
@@ -259,6 +431,8 @@ bool ConfigFieldState::setValue(ConfigValue value) {
         validation.valid = true;
         return true;
     }
+    undoValue = currentValue;
+    redoValue.reset();
     currentValue = std::move(value);
     validation.message.clear();
     validation.valid = true;
@@ -269,6 +443,8 @@ bool ConfigFieldState::revertToOriginal() {
     if (configValuesEqual(currentValue, originalValue)) {
         return false;
     }
+    undoValue = currentValue;
+    redoValue.reset();
     currentValue = originalValue;
     validation.message.clear();
     validation.valid = true;
@@ -282,6 +458,8 @@ bool ConfigFieldState::revertToDefault() {
     if (configValuesEqual(currentValue, defaultValue)) {
         return false;
     }
+    undoValue = currentValue;
+    redoValue.reset();
     currentValue = defaultValue;
     validation.message.clear();
     validation.valid = true;
@@ -295,6 +473,42 @@ void ConfigFieldState::setValidation(FieldValidationState state) {
 void ConfigFieldState::clearValidation() {
     validation.valid = true;
     validation.message.clear();
+}
+
+bool ConfigFieldState::canUndo() const noexcept {
+    return undoValue.has_value();
+}
+
+bool ConfigFieldState::canRedo() const noexcept {
+    return redoValue.has_value();
+}
+
+bool ConfigFieldState::undo() {
+    if (!undoValue) {
+        return false;
+    }
+    ConfigValue previous = currentValue;
+    currentValue = std::move(*undoValue);
+    redoValue = std::move(previous);
+    undoValue.reset();
+    clearValidation();
+    return true;
+}
+
+bool ConfigFieldState::redo() {
+    if (!redoValue) {
+        return false;
+    }
+    undoValue = currentValue;
+    currentValue = std::move(*redoValue);
+    redoValue.reset();
+    clearValidation();
+    return true;
+}
+
+void ConfigFieldState::clearHistory() {
+    undoValue.reset();
+    redoValue.reset();
 }
 
 bool ConfigSectionState::isDirty() const {
@@ -356,16 +570,25 @@ ConfigurationEditorState ConfigurationEditorState::fromJson(const nlohmann::json
     for (const auto& section : schema.sections) {
         state.sections_.emplace_back(buildSectionState(document, section));
     }
+    state.unknown_.original = buildUnknownEntries(document, schema);
+    state.unknown_.current = state.unknown_.original;
+    state.unknown_.resetValidation();
     state.rebuildIndices();
     return state;
 }
 
 bool ConfigurationEditorState::isDirty() const {
-    return std::any_of(sections_.begin(), sections_.end(), [](const ConfigSectionState& section) { return section.isDirty(); });
+    if (std::any_of(sections_.begin(), sections_.end(), [](const ConfigSectionState& section) { return section.isDirty(); })) {
+        return true;
+    }
+    return unknown_.isDirty();
 }
 
 bool ConfigurationEditorState::hasInvalidFields() const {
-    return std::any_of(sections_.begin(), sections_.end(), [](const ConfigSectionState& section) { return section.hasInvalidFields(); });
+    if (std::any_of(sections_.begin(), sections_.end(), [](const ConfigSectionState& section) { return section.hasInvalidFields(); })) {
+        return true;
+    }
+    return unknown_.validation.valid == false;
 }
 
 ConfigFieldState* ConfigurationEditorState::field(std::string_view id) noexcept {
@@ -443,12 +666,15 @@ void ConfigurationEditorState::revertAll() {
     for (auto& section : sections_) {
         section.revertToOriginal();
     }
+    revertUnknownEntries();
 }
 
 void ConfigurationEditorState::revertAllToDefaults() {
     for (auto& section : sections_) {
         section.revertToDefaults();
     }
+    // Unknown entries do not have schema defaults; revert to original state.
+    revertUnknownEntries();
 }
 
 bool ConfigurationEditorState::validateField(std::string_view id, ValidationPhase phase) {
@@ -482,6 +708,75 @@ bool ConfigurationEditorState::validateAll(ValidationPhase phase) {
     return allValid;
 }
 
+bool ConfigurationEditorState::undoField(std::string_view id) {
+    if (auto* state = field(id)) {
+        return state->undo();
+    }
+    return false;
+}
+
+bool ConfigurationEditorState::redoField(std::string_view id) {
+    if (auto* state = field(id)) {
+        return state->redo();
+    }
+    return false;
+}
+
+bool ConfigurationEditorState::undoSection(std::string_view id) {
+    if (auto* s = section(id)) {
+        return undoSectionHistory(*s);
+    }
+    return false;
+}
+
+bool ConfigurationEditorState::redoSection(std::string_view id) {
+    if (auto* s = section(id)) {
+        return redoSectionHistory(*s);
+    }
+    return false;
+}
+
+void ConfigurationEditorState::undoAll() {
+    for (auto& section : sections_) {
+        undoSectionHistory(section);
+    }
+}
+
+void ConfigurationEditorState::redoAll() {
+    for (auto& section : sections_) {
+        redoSectionHistory(section);
+    }
+}
+
+bool ConfigurationEditorState::hasUnknownEntries() const noexcept {
+    if (unknown_.current.is_object()) {
+        return !unknown_.current.empty();
+    }
+    return !unknown_.current.is_null();
+}
+
+bool ConfigurationEditorState::isUnknownDirty() const noexcept {
+    return unknown_.isDirty();
+}
+
+void ConfigurationEditorState::setUnknownEntries(nlohmann::json value) {
+    unknown_.current = std::move(value);
+    unknown_.resetValidation();
+}
+
+void ConfigurationEditorState::setUnknownValidation(FieldValidationState state) {
+    unknown_.validation = std::move(state);
+}
+
+void ConfigurationEditorState::clearUnknownValidation() {
+    unknown_.resetValidation();
+}
+
+void ConfigurationEditorState::revertUnknownEntries() {
+    unknown_.current = unknown_.original;
+    unknown_.resetValidation();
+}
+
 void ConfigurationEditorState::rebuildIndices() {
     fieldIndex_.clear();
     sectionIndex_.clear();
@@ -502,6 +797,28 @@ void ConfigurationEditorState::indexSection(ConfigSectionState& section) {
     for (auto& child : section.children) {
         indexSection(child);
     }
+}
+
+nlohmann::json ConfigurationEditorState::toJson() const {
+    json document = json::object();
+    if (unknown_.current.is_object()) {
+        document = unknown_.current;
+    } else if (!unknown_.current.is_null()) {
+        document = unknown_.current;
+    }
+
+    for (const auto& section : sections_) {
+        writeSectionToJson(section, document);
+    }
+
+    return document;
+}
+
+void ConfigurationEditorState::commitToCurrent() {
+    for (auto& section : sections_) {
+        commitSectionState(section);
+    }
+    unknown_.original = unknown_.current;
 }
 
 } // namespace gb2d

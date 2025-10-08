@@ -28,6 +28,9 @@ public:
     // Draw contents; use context for services and manager interactions
     virtual void render(WindowContext& ctx) = 0;
 
+    // Returning false vetoes the close request; window remains open
+    virtual bool handleCloseRequest(WindowContext&) { return true; }
+
     // Lifecycle hooks
     virtual void onFocus(WindowContext&) {}
     virtual void onClose(WindowContext&) {}

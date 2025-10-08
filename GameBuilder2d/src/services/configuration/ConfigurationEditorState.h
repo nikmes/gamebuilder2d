@@ -7,6 +7,7 @@
 #include <string_view>
 #include <unordered_map>
 #include <vector>
+#include <optional>
 
 #include <nlohmann/json_fwd.hpp>
 
@@ -18,16 +19,23 @@ struct ConfigFieldState {
     ConfigValue currentValue{};
     ConfigValue defaultValue{};
     FieldValidationState validation{};
+    std::optional<ConfigValue> undoValue{};
+    std::optional<ConfigValue> redoValue{};
 
     [[nodiscard]] bool isDirty() const;
     [[nodiscard]] bool isValid() const { return validation.valid; }
+    [[nodiscard]] bool canUndo() const noexcept;
+    [[nodiscard]] bool canRedo() const noexcept;
 
     bool setValue(ConfigValue value);
     bool revertToOriginal();
     bool revertToDefault();
+    bool undo();
+    bool redo();
 
     void setValidation(FieldValidationState state);
     void clearValidation();
+    void clearHistory();
 };
 
 struct ConfigSectionState {
@@ -42,6 +50,19 @@ struct ConfigSectionState {
 
     bool revertToOriginal();
     bool revertToDefaults();
+};
+
+struct ConfigUnknownState {
+    nlohmann::json original{nlohmann::json::object()};
+    nlohmann::json current{nlohmann::json::object()};
+    FieldValidationState validation{};
+
+    [[nodiscard]] bool isDirty() const { return original != current; }
+    [[nodiscard]] bool isValid() const { return validation.valid; }
+    void resetValidation() {
+        validation.valid = true;
+        validation.message.clear();
+    }
 };
 
 class ConfigurationEditorState {
@@ -71,12 +92,31 @@ public:
     bool validateField(std::string_view id, ValidationPhase phase);
     bool validateAll(ValidationPhase phase);
 
+    bool undoField(std::string_view id);
+    bool redoField(std::string_view id);
+    bool undoSection(std::string_view id);
+    bool redoSection(std::string_view id);
+    void undoAll();
+    void redoAll();
+
     [[nodiscard]] const std::vector<ConfigSectionState>& sections() const noexcept { return sections_; }
+    [[nodiscard]] const nlohmann::json& unknownEntries() const noexcept { return unknown_.current; }
+    [[nodiscard]] bool hasUnknownEntries() const noexcept;
+    [[nodiscard]] bool isUnknownDirty() const noexcept;
+    [[nodiscard]] const FieldValidationState& unknownValidation() const noexcept { return unknown_.validation; }
+    void setUnknownEntries(nlohmann::json value);
+    void setUnknownValidation(FieldValidationState state);
+    void clearUnknownValidation();
+    void revertUnknownEntries();
+
+    [[nodiscard]] nlohmann::json toJson() const;
+    void commitToCurrent();
 
 private:
     std::vector<ConfigSectionState> sections_{};
     std::unordered_map<std::string, ConfigFieldState*> fieldIndex_{};
     std::unordered_map<std::string, ConfigSectionState*> sectionIndex_{};
+    ConfigUnknownState unknown_{};
 
     void rebuildIndices();
     void indexSection(ConfigSectionState& section);

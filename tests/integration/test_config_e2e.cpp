@@ -22,7 +22,9 @@ static std::filesystem::path prepare_env_base(const char* sub) {
     std::error_code ec;
     fs::remove_all(base, ec);
     fs::create_directories(base, ec);
-    set_env("GB2D_CONFIG_DIR", base.string().c_str());
+    auto envDir = base / "config";
+    fs::create_directories(envDir, ec);
+    set_env("GB2D_CONFIG_DIR", envDir.string().c_str());
     return base;
 }
 

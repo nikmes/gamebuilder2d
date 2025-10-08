@@ -15,7 +15,9 @@ static void set_env(const char* k, const char* v) {
 static void set_config_dir_temp(const char* sub) {
     auto base = std::filesystem::temp_directory_path() / sub;
     std::filesystem::create_directories(base);
-    set_env("GB2D_CONFIG_DIR", base.string().c_str());
+    auto envDir = base / "config";
+    std::filesystem::create_directories(envDir);
+    set_env("GB2D_CONFIG_DIR", envDir.string().c_str());
 }
 
 TEST_CASE("change notifications fire after save", "[config]") {

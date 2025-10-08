@@ -35,8 +35,10 @@ TEST_CASE("load existing valid file", "[config]") {
     auto base = fs::temp_directory_path() / fs::path("gb2d_configdir_test");
     std::error_code ec;
     fs::create_directories(base, ec);
+    auto envDir = base / "config";
+    fs::create_directories(envDir, ec);
     // Override config dir to temp folder
-    set_env("GB2D_CONFIG_DIR", base.string().c_str());
+    set_env("GB2D_CONFIG_DIR", envDir.string().c_str());
 
     auto path = write_temp_config(base, j);
 

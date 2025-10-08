@@ -15,7 +15,9 @@ TEST_CASE("env overrides apply", "[config]") {
     // Prepare a clean env base path so we don't touch user config
     auto base = std::filesystem::temp_directory_path() / "gb2d_configdir_env";
     std::filesystem::create_directories(base);
-    set_env("GB2D_CONFIG_DIR", base.string().c_str());
+    auto envDir = base / "config";
+    std::filesystem::create_directories(envDir);
+    set_env("GB2D_CONFIG_DIR", envDir.string().c_str());
 
     // Start from defaults then apply env overrides
     gb2d::ConfigurationManager::loadOrDefault();

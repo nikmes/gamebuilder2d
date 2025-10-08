@@ -27,6 +27,7 @@ struct WindowContext {
     std::function<void()> requestFocus;   // focus this window
     std::function<void()> requestUndock;  // undock this window
     std::function<void()> requestClose;   // close this window
+    std::function<void(const std::string&, float)> pushToast; // transient toast notifications
 };
 
 } // namespace gb2d

@@ -29,6 +29,8 @@ add_library(gb2d_window STATIC
   "src/ui/Windows/GameWindow.cpp"
   "src/ui/Windows/HotkeysWindow.h"
   "src/ui/Windows/HotkeysWindow.cpp"
+  "src/ui/Windows/ConfigurationWindow.h"
+  "src/ui/Windows/ConfigurationWindow.cpp"
   "src/ui/FullscreenSession.h"
   "src/ui/FullscreenSession.cpp"
 )
@@ -209,6 +211,7 @@ add_library(imgui STATIC
   ${imgui_SOURCE_DIR}/imgui_draw.cpp
   ${imgui_SOURCE_DIR}/imgui_tables.cpp
   ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+  ${imgui_SOURCE_DIR}/misc/cpp/imgui_stdlib.cpp
 )
 option(GB2D_WITH_IMGUI_DEMO "Include Dear ImGui demo & debug windows (omitted in Release automatically)" ON)
 # Only add demo source for non-Release builds when option is ON. This avoids compiling a large translation unit in Release and reduces binary size.

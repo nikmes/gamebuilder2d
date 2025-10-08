@@ -13,7 +13,8 @@ class ConfigurationManager {
 public:
     static void loadOrDefault();
     static bool load();
-    static bool save();
+    static bool save(bool createBackup = false, bool* outBackupCreated = nullptr);
+    static bool applyRuntime(const nlohmann::json& document);
 
     struct OnConfigReloadedHook;
 

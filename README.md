@@ -23,8 +23,9 @@ cd gamebuilder2d
   - Syntax-highlighted code editor with multi-tab support and ImGuiFileDialog integration
   - File previewer for text and common image formats
   - Space Invaders playground rendered into a raylib `RenderTexture`
+- **Configuration window** with searchable sections, inline validation, Apply/Save flows, and advanced toggles for experimental settings.
 - **Customizable hotkeys** managed by a centralized HotKeyManager with conflict detection, text-input suppression, and in-app editing.
-- **Configuration service** backed by JSON, env overrides (`GB2D_*`), validation, and change notifications.
+- **Configuration service** backed by JSON, env overrides (`GB2D_*`), validation, change notifications, and a first-class UI editor.
 - **Logging service** (spdlog + ImGui sink) reused by the UI and runtime systems.
 - **Composable static libraries**: `gb2d_window`, `gb2d_configuration`, and `gb2d_logging` feed into the main executable.
 - **Extensive tests** covering configuration logic and window layout serialization (Catch2).
@@ -113,6 +114,16 @@ On WSL, reconfigure with `-DBUILD_TESTING=ON` or use the `windows-vs2022-x64-rel
 - Hotkey overrides live under the `input.hotkeys` array. Set `shortcut` to `null` to disable an action or edit values directly when scripting deployments.
 - Layout exports live in `out/layouts/<name>.{wm.txt,imgui.ini,layout.json}`. The manager restores `last` automatically on startup and backs up corrupted layouts.
 
+### Configuration window
+
+- Open via **Window → Configuration** or press `Ctrl+,`.
+- The left navigation groups sections (window, audio, textures, hotkeys, etc.) pulled from the live configuration schema. Type in the search box to filter sections and highlight matching fields.
+- When you edit a value, dirty badges appear on the section and field. Use **Revert Field**, **Revert Section**, or **Revert All** to discard changes selectively.
+- **Apply** pushes validated changes to running systems without touching disk; **Save** performs Apply and writes `config.json`, creating `config.backup.json` on the first save of the session.
+- Toggle **Show advanced settings** to reveal experimental knobs flagged in the schema. Advanced fields stay hidden by default to keep the core view approachable.
+- Fields without dedicated widgets fall back to an inline JSON editor so custom keys remain editable. Errors surface inline and block Apply/Save until resolved.
+- The window respects `GB2D_CONFIG_DIR`; any edits apply to the configuration directory currently in use.
+
 ## Manager quickstarts
 
 ### ConfigurationManager
@@ -124,6 +135,7 @@ On WSL, reconfigure with `-DBUILD_TESTING=ON` or use the `windows-vs2022-x64-rel
 - Export the active profile to diagnostics tools with `exportCompact()`.
 
 📚 Reference: [ConfigurationManager overview](GameBuilder2d/docs/configuration-manager.md)
+🛠️ Developer guide: [Configuration window internals](GameBuilder2d/docs/configuration-window-developer.md)
 
 ### HotKeyManager
 
@@ -142,7 +154,7 @@ On WSL, reconfigure with `-DBUILD_TESTING=ON` or use the `windows-vs2022-x64-rel
 - Check `AcquireResult::placeholder` to gracefully flag missing art in UI or gameplay overlays.
 - Expose diagnostics using `TextureManager::metrics()` and trigger hot reloads with `TextureManager::reloadAll()`.
 
-� Reference: [TextureManager developer guide](GameBuilder2d/docs/texture-manager.md)
+📚 Reference: [TextureManager developer guide](GameBuilder2d/docs/texture-manager.md)
 
 ### AudioManager
 

@@ -2,6 +2,8 @@
 
 The HotKeyManager centralizes every editor shortcut in GameBuilder2d. It coordinates default bindings, lets you record new combinations in-app, persists overrides to `config.json`, and ensures shortcuts respect text input and modal dialogs.
 
+Quick tip: press `Ctrl+,` anywhere in the editor to open the **Configuration** window without touching the menus.
+
 ## Opening the Hotkeys editor
 
 You can reach the Hotkeys window from **Window → Hotkeys** or by pressing the default shortcut `Ctrl+Alt+K`. The window lists every registered action grouped by category (Global, Code Editor, Game Window, etc.).
@@ -45,6 +47,7 @@ Customized bindings are stored under the `input.hotkeys` array. Each entry conta
 "input": {
   "hotkeys": [
     { "action": "global.openFileDialog", "shortcut": "Ctrl+O" },
+    { "action": "global.openConfiguration", "shortcut": "Ctrl+," },
     { "action": "global.openHotkeySettings", "shortcut": "Ctrl+Alt+K" },
     { "action": "codeEditor.saveFile", "shortcut": "Cmd+S" } // macOS example
   ]

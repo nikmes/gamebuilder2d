@@ -99,6 +99,7 @@ private:
     Layout layout_{};
     std::vector<ManagedWindow> windows_{};
     std::unordered_set<std::string> undock_requests_{};
+    std::vector<std::string> pending_close_requests_{};
     unsigned int dockspace_id_{0};
     int next_id_{1};
     bool layout_built_{false};

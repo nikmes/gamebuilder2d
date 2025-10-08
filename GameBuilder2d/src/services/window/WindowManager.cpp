@@ -14,6 +14,7 @@
 #include <nlohmann/json.hpp>
 #include "services/logger/LogManager.h"
 #include "services/configuration/ConfigurationManager.h"
+#include <unordered_set>
 // ImGuiColorTextEdit
 #include <TextEditor.h>
 #include <functional>
@@ -27,6 +28,7 @@
 #include "ui/Windows/FilePreviewWindow.h"
 #include "ui/Windows/GameWindow.h"
 #include "ui/Windows/HotkeysWindow.h"
+#include "ui/Windows/ConfigurationWindow.h"
 #include "services/hotkey/HotKeyManager.h"
 #include "services/hotkey/HotKeyActions.h"
 #include <string>
@@ -78,6 +80,14 @@ static void RegisterBuiltinWindows(WindowRegistry& reg) {
         return std::make_unique<FilePreviewWindow>();
     };
     reg.registerType(std::move(previewDesc));
+
+    WindowTypeDesc configurationDesc;
+    configurationDesc.typeId = "configuration";
+    configurationDesc.displayName = "Configuration";
+    configurationDesc.factory = [](WindowContext&) -> std::unique_ptr<IWindow> {
+        return std::make_unique<ConfigurationWindow>();
+    };
+    reg.registerType(std::move(configurationDesc));
 
     // General Game window (loads embedded games such as Space Invaders)
     WindowTypeDesc gameDesc;
@@ -143,6 +153,9 @@ std::string WindowManager::spawnWindowByType(const std::string& typeId,
                                              std::optional<Size> initialSize) {
     // Construct a minimal context; services can be wired here later
     WindowContext ctx{};
+    ctx.pushToast = [this](const std::string& text, float seconds) {
+        this->addToast(text, seconds);
+    };
     auto impl = window_registry_.create(typeId, ctx);
     if (!impl) return {};
     ManagedWindow w{};
@@ -395,6 +408,9 @@ bool WindowManager::loadLayout(const std::string& name) {
                         std::string type = jw.value(std::string("type"), std::string(""));
                         if (!type.empty()) {
                             WindowContext ctx{};
+                            ctx.pushToast = [this](const std::string& text, float seconds) {
+                                this->addToast(text, seconds);
+                            };
                             auto impl = window_registry_.create(type, ctx);
                             if (impl) {
                                 // Deserialize state before title sync so window may set its own title; then apply explicit title if provided
@@ -730,6 +746,10 @@ void WindowManager::processGlobalHotkeys() {
         createWindow("Window " + std::to_string(next_id_));
     }
 
+    if (HotKeyManager::consumeTriggered(OpenConfigurationWindow)) {
+        spawnOrFocusWindow("configuration", "Configuration");
+    }
+
     if (HotKeyManager::consumeTriggered(OpenHotkeySettings)) {
         spawnOrFocusWindow("hotkeys", "Hotkeys");
     }
@@ -935,6 +955,20 @@ void WindowManager::renderUI() {
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Settings")) {
+            const std::string configurationShortcut = hotkeyShortcutLabel(hotkeys::actions::OpenConfigurationWindow);
+            if (ImGui::MenuItem("Configuration...", shortcutArg(configurationShortcut))) {
+                ManagedWindow* existing = findByTypeId("configuration");
+                if (!existing) {
+                    std::string id = spawnWindowByType("configuration", std::string("Configuration"));
+                    if (!id.empty()) {
+                        focus_request_window_id_ = id;
+                    }
+                } else {
+                    existing->open = true;
+                    focus_request_window_id_ = existing->id;
+                }
+            }
+            ImGui::Separator();
             const std::string hotkeysShortcut = hotkeyShortcutLabel(hotkeys::actions::OpenHotkeySettings);
             if (ImGui::MenuItem("Hotkeys...", shortcutArg(hotkeysShortcut))) {
                 ManagedWindow* existing = findByTypeId("hotkeys");
@@ -1054,81 +1088,116 @@ void WindowManager::renderUI() {
         }
         std::string label = makeLabel(w);
         bool open = w.open;
-    ImGuiWindowFlags windowFlags = 0;
-    if (isFilePreview) windowFlags |= ImGuiWindowFlags_NoSavedSettings;
-    if (ImGui::Begin(label.c_str(), &open, windowFlags)) {
-            // Allow impl to render its content
-            if (w.impl) {
-                WindowContext ctx{};
-                ctx.requestFocus = [this,&w]() { this->focus_request_window_id_ = w.id; };
-                ctx.requestUndock = [this,&w]() { this->undock_requests_.insert(w.id); };
-                ctx.requestClose = [this,&w]() { this->cleanupPreview(w.id); this->closeWindow(w.id); };
-                ctx.fullscreen = fullscreen_session_;
+
+        WindowContext ctx{};
+        const bool hasImpl = (w.impl != nullptr);
+        if (hasImpl) {
+            const std::string windowId = w.id;
+            ctx.requestFocus = [this, windowId]() { this->focus_request_window_id_ = windowId; };
+            ctx.requestUndock = [this, windowId]() { this->undock_requests_.insert(windowId); };
+            ctx.requestClose = [this, &open, windowId]() {
+                open = false;
+                this->pending_close_requests_.push_back(windowId);
+            };
+            ctx.fullscreen = fullscreen_session_;
+            ctx.pushToast = [this](const std::string& text, float seconds) {
+                this->addToast(text, seconds);
+            };
+        }
+
+        ImGuiWindowFlags windowFlags = 0;
+        if (isFilePreview) windowFlags |= ImGuiWindowFlags_NoSavedSettings;
+        if (ImGui::Begin(label.c_str(), &open, windowFlags)) {
+            if (hasImpl) {
                 // TODO: wire services into ctx as they are extracted
                 w.impl->render(ctx);
             } else {
-            ImGui::Text("ID: %s", w.id.c_str());
-            if (ImGui::Button("Undock")) {
-                undock_requests_.insert(w.id);
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("Close")) {
-                cleanupPreview(w.id);
-                closeWindow(w.id);
-                ImGui::End();
-                break; // vector modified; restart next frame
-            }
-            // Quick docking controls relative to root
-            if (ImGui::BeginMenuBar()) {
-                if (ImGui::BeginMenu("Dock")) {
-                    if (ImGui::MenuItem("Left"))  dockWindow(w.id, "root", DockPosition::Left);
-                    if (ImGui::MenuItem("Right")) dockWindow(w.id, "root", DockPosition::Right);
-                    if (ImGui::MenuItem("Top"))   dockWindow(w.id, "root", DockPosition::Top);
-                    if (ImGui::MenuItem("Bottom"))dockWindow(w.id, "root", DockPosition::Bottom);
-                    if (ImGui::MenuItem("Center (Tab)")) dockWindow(w.id, "root", DockPosition::Center);
-                    ImGui::EndMenu();
+                ImGui::Text("ID: %s", w.id.c_str());
+                if (ImGui::Button("Undock")) {
+                    undock_requests_.insert(w.id);
                 }
                 ImGui::SameLine();
-                // Drag handle: start drag-drop with our window id
-                ImGui::InvisibleButton("##drag_handle", ImVec2(16, 16));
-                ImDrawList* dl = ImGui::GetWindowDrawList();
-                ImVec2 pmin = ImGui::GetItemRectMin();
-                ImVec2 pmax = ImGui::GetItemRectMax();
-                dl->AddRect(pmin, pmax, IM_COL32(200,200,200,180));
-                dl->AddLine(ImVec2(pmin.x+4, pmin.y+5), ImVec2(pmax.x-4, pmin.y+5), IM_COL32(200,200,200,180), 1.0f);
-                dl->AddLine(ImVec2(pmin.x+4, pmin.y+9), ImVec2(pmax.x-4, pmin.y+9), IM_COL32(200,200,200,180), 1.0f);
-                dl->AddLine(ImVec2(pmin.x+4, pmin.y+13), ImVec2(pmax.x-4, pmin.y+13), IM_COL32(200,200,200,180), 1.0f);
-                if (ImGui::IsItemActive() || ImGui::IsItemHovered()) {
-                    if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
-                        dragging_window_id_ = w.id;
-                        ImGui::SetDragDropPayload("GB2D_WIN_ID", w.id.c_str(), (int)w.id.size()+1);
-                        ImGui::Text("Dock %s", w.title.c_str());
-                        ImGui::EndDragDropSource();
-                    }
-                } else if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-                    if (dragging_window_id_ == w.id) dragging_window_id_.reset();
+                if (ImGui::Button("Close")) {
+                    cleanupPreview(w.id);
+                    closeWindow(w.id);
+                    ImGui::End();
+                    break; // vector modified; restart next frame
                 }
-                ImGui::EndMenuBar();
-            }
+                // Quick docking controls relative to root
+                if (ImGui::BeginMenuBar()) {
+                    if (ImGui::BeginMenu("Dock")) {
+                        if (ImGui::MenuItem("Left"))  dockWindow(w.id, "root", DockPosition::Left);
+                        if (ImGui::MenuItem("Right")) dockWindow(w.id, "root", DockPosition::Right);
+                        if (ImGui::MenuItem("Top"))   dockWindow(w.id, "root", DockPosition::Top);
+                        if (ImGui::MenuItem("Bottom"))dockWindow(w.id, "root", DockPosition::Bottom);
+                        if (ImGui::MenuItem("Center (Tab)")) dockWindow(w.id, "root", DockPosition::Center);
+                        ImGui::EndMenu();
+                    }
+                    ImGui::SameLine();
+                    // Drag handle: start drag-drop with our window id
+                    ImGui::InvisibleButton("##drag_handle", ImVec2(16, 16));
+                    ImDrawList* dl = ImGui::GetWindowDrawList();
+                    ImVec2 pmin = ImGui::GetItemRectMin();
+                    ImVec2 pmax = ImGui::GetItemRectMax();
+                    dl->AddRect(pmin, pmax, IM_COL32(200,200,200,180));
+                    dl->AddLine(ImVec2(pmin.x+4, pmin.y+5), ImVec2(pmax.x-4, pmin.y+5), IM_COL32(200,200,200,180), 1.0f);
+                    dl->AddLine(ImVec2(pmin.x+4, pmin.y+9), ImVec2(pmax.x-4, pmin.y+9), IM_COL32(200,200,200,180), 1.0f);
+                    dl->AddLine(ImVec2(pmin.x+4, pmin.y+13), ImVec2(pmax.x-4, pmin.y+13), IM_COL32(200,200,200,180), 1.0f);
+                    if (ImGui::IsItemActive() || ImGui::IsItemHovered()) {
+                        if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
+                            dragging_window_id_ = w.id;
+                            ImGui::SetDragDropPayload("GB2D_WIN_ID", w.id.c_str(), (int)w.id.size()+1);
+                            ImGui::Text("Dock %s", w.title.c_str());
+                            ImGui::EndDragDropSource();
+                        }
+                    } else if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+                        if (dragging_window_id_ == w.id) dragging_window_id_.reset();
+                    }
+                    ImGui::EndMenuBar();
+                }
 
-            // Sample content per title
-            if (!w.impl && w.title == "Scene") {
-                ImGui::TextUnformatted("Scene view placeholder");
-            } else if (!w.impl && w.title == "Inspector") {
-                ImGui::TextUnformatted("Inspector placeholder");
+                // Sample content per title
+                if (!w.impl && w.title == "Scene") {
+                    ImGui::TextUnformatted("Scene view placeholder");
+                } else if (!w.impl && w.title == "Inspector") {
+                    ImGui::TextUnformatted("Inspector placeholder");
+                }
             }
-            } // end else (non-impl)
         }
         ImGui::End();
+
+        if (hasImpl && w.open && !open) {
+            if (!w.impl->handleCloseRequest(ctx)) {
+                open = true;
+            } else {
+                pending_close_requests_.push_back(w.id);
+            }
+        }
+
         w.open = open;
         if (!w.open && isFilePreview) {
             filePreviewCloseQueue.push_back(w.id);
         }
     }
 
-    for (const auto& id : filePreviewCloseQueue) {
-        cleanupPreview(id);
-        closeWindow(id);
+    if (!pending_close_requests_.empty() || !filePreviewCloseQueue.empty()) {
+        std::unordered_set<std::string> processed;
+        processed.reserve(pending_close_requests_.size() + filePreviewCloseQueue.size());
+
+        for (const auto& id : pending_close_requests_) {
+            if (processed.insert(id).second) {
+                cleanupPreview(id);
+                closeWindow(id);
+            }
+        }
+        pending_close_requests_.clear();
+
+        for (const auto& id : filePreviewCloseQueue) {
+            if (processed.insert(id).second) {
+                cleanupPreview(id);
+                closeWindow(id);
+            }
+        }
     }
 
     // Process undock requests: in ImGui, undock by setting next window dock id to 0

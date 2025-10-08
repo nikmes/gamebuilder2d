@@ -21,9 +21,11 @@ add_executable(config_tests
   unit/config/test_change_notifications.cpp
   unit/config/test_export.cpp
   unit/config/test_boundaries.cpp
+  unit/config/test_apply_save_runtime.cpp
   unit/config/test_validate.cpp
   unit/config/test_editor_state.cpp
   integration/test_config_e2e.cpp
+  integration/test_config_window_ui.cpp
 )
 target_include_directories(config_tests PRIVATE
   ${CMAKE_SOURCE_DIR}/GameBuilder2d/src
@@ -43,7 +45,12 @@ add_executable(window_tests
 target_include_directories(window_tests PRIVATE
   ${CMAKE_SOURCE_DIR}/GameBuilder2d/src
 )
-target_link_libraries(window_tests PRIVATE Catch2::Catch2WithMain gb2d_window)
+target_link_libraries(window_tests PRIVATE
+  Catch2::Catch2WithMain
+  gb2d_window
+  gb2d_texture
+  gb2d_audio
+)
 set_property(TARGET window_tests PROPERTY CXX_STANDARD 20)
 target_compile_definitions(window_tests PRIVATE GB2D_INTERNAL_TESTING=1)
 

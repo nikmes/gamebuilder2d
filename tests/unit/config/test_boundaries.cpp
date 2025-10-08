@@ -31,7 +31,10 @@ static fs::path make_temp_config_dir(const std::string& name) {
 
 TEST_CASE("Large config file is rejected; defaults loaded and .bak created", "[config][bounds]") {
     auto dir = make_temp_config_dir("large");
-    set_env("GB2D_CONFIG_DIR", dir.string().c_str());
+    auto envDir = dir / "config";
+    std::error_code ec;
+    fs::create_directories(envDir, ec);
+    set_env("GB2D_CONFIG_DIR", envDir.string().c_str());
 
     const auto cfg = dir / "config.json";
 

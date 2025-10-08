@@ -2,6 +2,7 @@
 #include "paths.h"
 #include "json_io.h"
 #include "services/hotkey/HotKeyActions.h"
+#include <cstdio>
 #include <nlohmann/json.hpp>
 using nlohmann::json;
 #include <filesystem>
@@ -49,13 +50,14 @@ namespace {
 	FieldValidationState validate_string_regex(const ConfigFieldDesc& desc, const std::string& value);
 
 	using HotkeyDefault = std::pair<const char*, const char*>;
-	constexpr std::array<HotkeyDefault, 21> kDefaultHotkeys = {{
+	constexpr std::array<HotkeyDefault, 22> kDefaultHotkeys = {{
 		{hotkey_actions::OpenFileDialog,       "Ctrl+O"},
 		{hotkey_actions::OpenImageDialog,      "Ctrl+Shift+O"},
 		{hotkey_actions::ToggleEditorFullscreen, "F11"},
 		{hotkey_actions::FocusTextEditor,      "Ctrl+Shift+E"},
 		{hotkey_actions::ShowConsole,          "Ctrl+Shift+C"},
 		{hotkey_actions::SpawnDockWindow,      "Ctrl+Shift+N"},
+		{hotkey_actions::OpenConfigurationWindow, "Ctrl+,"},
 		{hotkey_actions::OpenHotkeySettings,   "Ctrl+Alt+K"},
 		{hotkey_actions::SaveLayout,           "Ctrl+Alt+S"},
 		{hotkey_actions::OpenLayoutManager,    "Ctrl+Alt+L"},
@@ -883,8 +885,20 @@ bool ConfigurationManager::load() {
 	return true;
 }
 
-bool ConfigurationManager::save() {
+bool ConfigurationManager::save(bool createBackup, bool* outBackupCreated) {
 	auto path = gb2d::paths::configFilePath();
+	std::filesystem::path target(path);
+	bool backupCreated = false;
+	if (createBackup) {
+		std::filesystem::path backupPath = target.parent_path() / "config.backup.json";
+		backupCreated = gb2d::jsonio::writeJsonAtomic(backupPath.string(), cfg());
+		if (!backupCreated) {
+			std::fprintf(stderr, "Failed to write configuration backup '%s'.\n", backupPath.string().c_str());
+		}
+	}
+	if (outBackupCreated) {
+		*outBackupCreated = backupCreated;
+	}
 	bool ok = gb2d::jsonio::writeJsonAtomic(path, cfg());
 	if (ok) {
 		// Fire callbacks on caller thread
@@ -898,6 +912,29 @@ bool ConfigurationManager::save() {
 		}
 	}
 	return ok;
+}
+
+bool ConfigurationManager::applyRuntime(const json& document) {
+	json next;
+	if (document.is_null()) {
+		next = json::object();
+	} else {
+		next = document;
+	}
+
+	ensureHotkeyDefaults(next, false);
+	size_t overrides = apply_env_overrides(next);
+	(void)overrides;
+
+	cfg() = std::move(next);
+
+	for (const auto& hook : reload_hooks()) {
+		if (hook.callback) {
+			hook.callback();
+		}
+	}
+
+	return true;
 }
 
 bool ConfigurationManager::getBool(const std::string& key, bool defaultValue) {
