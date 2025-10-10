@@ -51,6 +51,70 @@ struct PlaybackParams {
     float pan{0.5f}; // 0.0 = left, 0.5 = center, 1.0 = right
 };
 
+struct SoundInventoryRecord {
+    std::string key;
+    std::string path;
+    float durationSeconds{0.0f};
+    std::size_t refCount{0};
+    bool placeholder{false};
+    std::uint32_t sampleRate{0};
+    std::uint32_t channels{0};
+};
+
+struct MusicInventoryRecord {
+    std::string key;
+    std::string path;
+    float durationSeconds{0.0f};
+    std::size_t refCount{0};
+    bool placeholder{false};
+    std::uint32_t sampleRate{0};
+    std::uint32_t channels{0};
+};
+
+struct MusicPlaybackStatus {
+    bool valid{false};
+    bool playing{false};
+    bool paused{false};
+    float positionSeconds{0.0f};
+    float durationSeconds{0.0f};
+};
+
+enum class AudioEventType {
+    SoundLoaded,
+    SoundUnloaded,
+    MusicLoaded,
+    MusicUnloaded,
+    SoundPlaybackStarted,
+    SoundPlaybackStopped,
+    MusicPlaybackStarted,
+    MusicPlaybackPaused,
+    MusicPlaybackResumed,
+    MusicPlaybackStopped,
+    PreviewStarted,
+    PreviewStopped,
+    ConfigChanged,
+    DeviceError
+};
+
+struct AudioEvent {
+    AudioEventType type;
+    std::string key; // asset key, empty for global events
+    std::uint64_t timestampMs;
+    std::string details; // additional info
+};
+
+class AudioEventSink {
+public:
+    virtual ~AudioEventSink() = default;
+    virtual void onAudioEvent(const AudioEvent& event) = 0;
+};
+
+struct AudioEventSubscription {
+    std::uint32_t id{0};
+    AudioEventSink* sink{nullptr};
+    bool active{false};
+};
+
 struct PlaybackHandle {
     int slot{-1};
     std::uint32_t generation{0};
@@ -89,9 +153,16 @@ public:
     static bool stopMusic(const std::string& key);
     static bool setMusicVolume(const std::string& key, float volume);
     static bool seekMusic(const std::string& key, float positionSeconds);
+    static MusicPlaybackStatus musicPlaybackStatus(const std::string& key);
 
     static bool reloadAll();
     static AudioMetrics metrics();
+
+    // Inventory and event APIs for AudioManagerWindow
+    static std::vector<SoundInventoryRecord> captureSoundInventorySnapshot();
+    static std::vector<MusicInventoryRecord> captureMusicInventorySnapshot();
+    static AudioEventSubscription subscribeToAudioEvents(AudioEventSink* sink);
+    static bool unsubscribeFromAudioEvents(AudioEventSubscription& subscription);
 
     struct Backend {
         virtual ~Backend() = default;
@@ -122,6 +193,8 @@ public:
         bool (*isMusicStreamPlaying)(Music music);
         void (*setMusicVolume)(Music music, float volume);
         void (*seekMusicStream)(Music music, float positionSeconds);
+        float (*getMusicTimeLength)(Music music);
+        float (*getMusicTimePlayed)(Music music);
     };
 
     static void setBackendForTesting(Backend* backend);

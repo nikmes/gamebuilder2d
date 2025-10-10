@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
+#include <chrono>
 #include <filesystem>
 #include <mutex>
 #include <optional>
@@ -61,6 +63,9 @@ struct ManagerState {
     std::uint32_t generationCounter{1};
     std::size_t activeSoundInstances{0};
     const AudioManager::RaylibHooks* overrideHooks{nullptr};
+    // Event subscription infrastructure
+    std::vector<AudioEventSubscription> eventSubscriptions{};
+    std::uint32_t nextSubscriptionId{1};
     struct SoundSlot {
         Sound alias{};
         std::string key{};
@@ -77,6 +82,31 @@ struct ManagerState {
 ManagerState& state() {
     static ManagerState s;
     return s;
+}
+
+void publishAudioEvent(AudioEventType type, const std::string& key = "", const std::string& details = "") {
+    auto& st = state();
+    // Note: This function assumes the caller already holds st.mutex
+    
+    AudioEvent event{
+        type,
+        key,
+        static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count()),
+        details
+    };
+    
+    LogManager::info("AudioManager publishing event: type={}, key='{}', subscriptions={}", 
+                     static_cast<int>(type), key, st.eventSubscriptions.size());
+    
+    for (const auto& subscription : st.eventSubscriptions) {
+        if (subscription.active && subscription.sink) {
+            LogManager::info("AudioManager calling onAudioEvent for subscription ID {}", subscription.id);
+            subscription.sink->onAudioEvent(event);
+        } else {
+            LogManager::warn("AudioManager skipping inactive subscription ID {}", subscription.id);
+        }
+    }
 }
 
 class RaylibBackend final : public AudioManager::Backend {
@@ -118,7 +148,9 @@ const AudioManager::RaylibHooks& defaultHooks() {
         &UpdateMusicStream,
         &IsMusicStreamPlaying,
         &SetMusicVolume,
-        &SeekMusicStream
+        &SeekMusicStream,
+        &GetMusicTimeLength,
+        &GetMusicTimePlayed
     };
     return hooks;
 }
@@ -304,7 +336,14 @@ void refreshSoundSlotsLocked(ManagerState& st, const AudioManager::RaylibHooks& 
             continue;
         }
         if (!api.isSoundPlaying(slot.alias)) {
+            // Sound finished playing - publish event before releasing
+            std::string stoppedKey = slot.key;
             releaseSoundSlot(slot, api);
+            
+            // Publish event outside the slot cleanup
+            if (!stoppedKey.empty()) {
+                publishAudioEvent(AudioEventType::SoundPlaybackStopped, stoppedKey);
+            }
             continue;
         }
         active++;
@@ -502,6 +541,9 @@ void AudioManager::tick(float /*deltaSeconds*/) {
         if (!api.isMusicStreamPlaying(rec.music)) {
             rec.playing = false;
             rec.paused = false;
+            
+            // Publish music stopped event
+            publishAudioEvent(AudioEventType::MusicPlaybackStopped, key);
         }
     }
 }
@@ -549,6 +591,7 @@ AcquireSoundResult AudioManager::acquireSound(const std::string& identifier,
             record.sound = soundHandle;
             record.placeholder = false;
             LogManager::info("AudioManager loaded sound '{}' as '{}'", resolved->string(), key);
+            publishAudioEvent(AudioEventType::SoundLoaded, key);
         } else {
             LogManager::error("AudioManager failed to load sound '{}' (key '{}'), using placeholder", resolved->string(), key);
         }
@@ -593,6 +636,7 @@ bool AudioManager::releaseSound(const std::string& key) {
     if (rec.refCount == 0) {
         unloadSoundRecord(rec, api);
         st.sounds.erase(it);
+        publishAudioEvent(AudioEventType::SoundUnloaded, canonical);
     }
     return true;
 }
@@ -636,6 +680,7 @@ AcquireMusicResult AudioManager::acquireMusic(const std::string& identifier,
             record.music = musicHandle;
             record.placeholder = false;
             LogManager::info("AudioManager loaded music '{}' as '{}'", resolved->string(), key);
+            publishAudioEvent(AudioEventType::MusicLoaded, key);
         } else {
             LogManager::error("AudioManager failed to load music '{}' (key '{}'), using placeholder", resolved->string(), key);
         }
@@ -680,6 +725,7 @@ bool AudioManager::releaseMusic(const std::string& key) {
     if (rec.refCount == 0) {
         unloadMusicRecord(rec, api);
         st.music.erase(it);
+        publishAudioEvent(AudioEventType::MusicUnloaded, canonical);
     }
     return true;
 }
@@ -1026,6 +1072,56 @@ bool AudioManager::seekMusic(const std::string& key, float positionSeconds) {
     return true;
 }
 
+MusicPlaybackStatus AudioManager::musicPlaybackStatus(const std::string& key) {
+    MusicPlaybackStatus status{};
+    auto canonical = canonicalizeKey(key);
+    auto& st = state();
+    std::scoped_lock lock(st.mutex);
+    if (!st.initialized) {
+        return status;
+    }
+
+    auto it = st.music.find(canonical);
+    if (it == st.music.end()) {
+        return status;
+    }
+
+    const auto& record = it->second;
+    status.valid = true;
+    status.playing = record.playing;
+    status.paused = record.paused;
+
+    if (record.placeholder) {
+        return status;
+    }
+
+    if (st.silentMode || !st.deviceReady || !isMusicValid(record.music)) {
+        return status;
+    }
+
+    const auto& api = hooks(st);
+    if (api.getMusicTimeLength) {
+        float length = api.getMusicTimeLength(record.music);
+        if (!std::isfinite(length) || length < 0.0f) {
+            length = 0.0f;
+        }
+        status.durationSeconds = length;
+    }
+
+    if (api.getMusicTimePlayed) {
+        float played = api.getMusicTimePlayed(record.music);
+        if (!std::isfinite(played) || played < 0.0f) {
+            played = 0.0f;
+        }
+        status.positionSeconds = played;
+        if (status.durationSeconds > 0.0f && status.positionSeconds > status.durationSeconds) {
+            status.positionSeconds = status.durationSeconds;
+        }
+    }
+
+    return status;
+}
+
 bool AudioManager::reloadAll() {
     auto& st = state();
     std::scoped_lock lock(st.mutex);
@@ -1129,6 +1225,102 @@ AudioMetrics AudioManager::metrics() {
     return m;
 }
 
+std::vector<SoundInventoryRecord> AudioManager::captureSoundInventorySnapshot() {
+    auto& st = state();
+    std::scoped_lock lock(st.mutex);
+    
+    std::vector<SoundInventoryRecord> snapshot;
+    snapshot.reserve(st.sounds.size());
+    
+    for (const auto& [key, record] : st.sounds) {
+        SoundInventoryRecord rec;
+        rec.key = key;
+        rec.path = record.resolvedPath;
+        rec.refCount = record.refCount;
+        rec.placeholder = record.placeholder;
+        
+        if (!record.placeholder && record.sound.stream.buffer) {
+            // Extract audio properties from raylib Sound
+            rec.sampleRate = record.sound.stream.sampleRate;
+            rec.channels = record.sound.stream.channels;
+            rec.durationSeconds = static_cast<float>(record.sound.frameCount) / 
+                                static_cast<float>(record.sound.stream.sampleRate);
+        }
+        
+        snapshot.push_back(std::move(rec));
+    }
+    
+    return snapshot;
+}
+
+std::vector<MusicInventoryRecord> AudioManager::captureMusicInventorySnapshot() {
+    auto& st = state();
+    std::scoped_lock lock(st.mutex);
+    
+    std::vector<MusicInventoryRecord> snapshot;
+    snapshot.reserve(st.music.size());
+    
+    for (const auto& [key, record] : st.music) {
+        MusicInventoryRecord rec;
+        rec.key = key;
+        rec.path = record.resolvedPath;
+        rec.refCount = record.refCount;
+        rec.placeholder = record.placeholder;
+        
+        if (!record.placeholder && record.music.stream.buffer) {
+            // Extract audio properties from raylib Music
+            rec.sampleRate = record.music.stream.sampleRate;
+            rec.channels = record.music.stream.channels;
+            rec.durationSeconds = static_cast<float>(record.music.frameCount) / 
+                                static_cast<float>(record.music.stream.sampleRate);
+        }
+        
+        snapshot.push_back(std::move(rec));
+    }
+    
+    return snapshot;
+}
+
+AudioEventSubscription AudioManager::subscribeToAudioEvents(AudioEventSink* sink) {
+    if (!sink) {
+        return AudioEventSubscription{};
+    }
+    
+    auto& st = state();
+    std::scoped_lock lock(st.mutex);
+    
+    AudioEventSubscription subscription;
+    subscription.id = st.nextSubscriptionId++;
+    subscription.sink = sink;
+    subscription.active = true;
+    
+    st.eventSubscriptions.push_back(subscription);
+    
+    return subscription;
+}
+
+bool AudioManager::unsubscribeFromAudioEvents(AudioEventSubscription& subscription) {
+    if (!subscription.active || subscription.id == 0) {
+        return false;
+    }
+    
+    auto& st = state();
+    std::scoped_lock lock(st.mutex);
+    
+    auto it = std::find_if(st.eventSubscriptions.begin(), st.eventSubscriptions.end(),
+                          [&](const AudioEventSubscription& sub) {
+                              return sub.id == subscription.id;
+                          });
+    
+    if (it != st.eventSubscriptions.end()) {
+        it->active = false;
+        subscription.active = false;
+        return true;
+    }
+    
+    return false;
+}
+
 void AudioManager::setBackendForTesting(Backend* backendInstance) {
     auto& st = state();
     std::scoped_lock lock(st.mutex);
@@ -1160,6 +1352,8 @@ void AudioManager::resetForTesting() {
     st.generationCounter = 1;
     st.activeSoundInstances = 0;
     st.soundSlots.clear();
+    st.eventSubscriptions.clear();
+    st.nextSubscriptionId = 1;
 }
 
 } // namespace gb2d::audio

@@ -81,7 +81,9 @@ int main()
     rlImGuiSetup(true);
 
     gb2d::textures::TextureManager::init();
-    gb2d::audio::AudioManager::init();
+    if (!gb2d::audio::AudioManager::init()) {
+        gb2d::logging::LogManager::warn("AudioManager failed to initialize");
+    }
 
     if (!gb2d::hotkeys::HotKeyManager::initialize()) {
         gb2d::logging::LogManager::error("HotKeyManager failed to initialize; shortcuts will be unavailable.");
@@ -93,6 +95,9 @@ int main()
     gb2d::WindowManager wm{};
     gb2d::FullscreenSession fullscreenSession{};
     wm.setFullscreenSession(&fullscreenSession);
+
+    // For testing: automatically open AudioManagerWindow
+    wm.spawnWindowByType("audio_manager");
 
     while (!WindowShouldClose())
     {

@@ -5,7 +5,7 @@
     "max_concurrent_sounds": 16,
     "music_volume": 1.0,
     "preload_music": [],
-    "preload_sounds": [],
+    "preload_sounds": ["spaceinvaders/hit.wav"],
     "search_paths": [
       "assets/audio"
     ],
@@ -26,10 +26,10 @@
       { "action": "global.showConsole", "shortcut": "Ctrl+Shift+C" },
       { "action": "global.spawnDockWindow", "shortcut": "Ctrl+Shift+N" },
       { "action": "global.openHotkeySettings", "shortcut": "Ctrl+Alt+K" },
-      { "action": "layouts.saveLayout", "shortcut": "Ctrl+Alt+S" },
+      { "action": "layouts.saveLayout", "shortcut": "Ctrl+Shift+L" },
       { "action": "layouts.openManager", "shortcut": "Ctrl+Alt+L" },
       { "action": "codeEditor.newFile", "shortcut": "Ctrl+N" },
-      { "action": "codeEditor.openFile", "shortcut": "Ctrl+Shift+O" },
+      { "action": "codeEditor.openFile", "shortcut": "Ctrl+Shift+P" },
       { "action": "codeEditor.saveFile", "shortcut": "Ctrl+S" },
       { "action": "codeEditor.saveFileAs", "shortcut": "Ctrl+Shift+S" },
       { "action": "codeEditor.saveAll", "shortcut": "Ctrl+Alt+S" },
