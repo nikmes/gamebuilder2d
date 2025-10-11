@@ -1203,8 +1203,20 @@ bool AudioManagerWindow::isConfigDirty() const {
     if (configWorking_.searchPaths != configBaseline_.searchPaths) return true;
     if (configWorking_.preloadSounds != configBaseline_.preloadSounds) return true;
     if (configWorking_.preloadMusic != configBaseline_.preloadMusic) return true;
-    if (configWorking_.preloadSoundAliases != configBaseline_.preloadSoundAliases) return true;
-    if (configWorking_.preloadMusicAliases != configBaseline_.preloadMusicAliases) return true;
+    const auto sanitizeAliases = [&](const auto& aliases) {
+        std::unordered_map<std::string, std::string> sanitized;
+        sanitized.reserve(aliases.size());
+        for (const auto& [key, value] : aliases) {
+            std::string trimmed = trimCopy(value);
+            if (trimmed.empty()) {
+                continue;
+            }
+            sanitized.emplace(canonicalizePreloadInput(key), std::move(trimmed));
+        }
+        return sanitized;
+    };
+    if (sanitizeAliases(configWorking_.preloadSoundAliases) != sanitizeAliases(configBaseline_.preloadSoundAliases)) return true;
+    if (sanitizeAliases(configWorking_.preloadMusicAliases) != sanitizeAliases(configBaseline_.preloadMusicAliases)) return true;
     return false;
 }
 
