@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "raylib.h"
@@ -12,6 +13,7 @@ namespace gb2d::audio {
 
 struct AudioConfig {
     bool enabled{true};
+    bool diagnosticsLoggingEnabled{true};
     float masterVolume{1.0f};
     float musicVolume{1.0f};
     float sfxVolume{1.0f};
@@ -19,6 +21,8 @@ struct AudioConfig {
     std::vector<std::string> searchPaths{};
     std::vector<std::string> preloadSounds{};
     std::vector<std::string> preloadMusic{};
+    std::unordered_map<std::string, std::string> soundAliases{};
+    std::unordered_map<std::string, std::string> musicAliases{};
 };
 
 struct AudioMetrics {

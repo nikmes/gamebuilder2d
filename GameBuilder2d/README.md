@@ -19,6 +19,11 @@ A minimal editor shell built with C++20, raylib, rlImGui, and ImGui (docking bra
 - Build:
   - CMake-based; links raylib, ImGui (docking), rlImGui, ImGuiFileDialog.
 
+  ## Documentation
+
+  - Audio subsystem configuration: `docs/audio-manager.md`
+  - Audio Manager window workflow: `docs/audio-manager-window.md`
+
 ## Editor window configuration
 
 Use these keys to control how the editor window starts up:

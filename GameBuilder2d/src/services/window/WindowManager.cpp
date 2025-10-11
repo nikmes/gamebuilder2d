@@ -151,7 +151,12 @@ std::string WindowManager::createWindow(const std::string& title, std::optional<
     ManagedWindow w{};
     w.id = "win-" + std::to_string(next_id_++);
     w.title = title.empty() ? w.id : title;
-    if (initialSize.has_value()) w.minSize = initialSize;
+    if (initialSize.has_value() && initialSize->width > 0 && initialSize->height > 0) {
+        w.initialSize = initialSize;
+        w.minSize = initialSize;
+    } else {
+        w.initialSize = Size{512, 512};
+    }
     windows_.push_back(std::move(w));
     gb2d::logging::LogManager::debug("Created window: {} (title: {})", w.id, w.title);
     return w.id;
@@ -175,7 +180,12 @@ std::string WindowManager::spawnWindowByType(const std::string& typeId,
         std::string t = impl->title();
         w.title = t.empty() ? typeId : t;
     }
-    if (initialSize.has_value()) w.minSize = initialSize;
+    if (initialSize.has_value() && initialSize->width > 0 && initialSize->height > 0) {
+        w.initialSize = initialSize;
+        w.minSize = initialSize;
+    } else {
+        w.initialSize = Size{512, 512};
+    }
     w.impl = std::move(impl);
     windows_.push_back(std::move(w));
     return windows_.back().id;
@@ -1117,6 +1127,15 @@ void WindowManager::renderUI() {
         }
         std::string label = makeLabel(w);
         bool open = w.open;
+
+        ImVec2 firstUseSize(512.0f, 512.0f);
+        if (w.initialSize.has_value()) {
+            const Size& size = *w.initialSize;
+            if (size.width > 0 && size.height > 0) {
+                firstUseSize = ImVec2(static_cast<float>(size.width), static_cast<float>(size.height));
+            }
+        }
+        ImGui::SetNextWindowSize(firstUseSize, ImGuiCond_FirstUseEver);
 
         WindowContext ctx{};
         const bool hasImpl = (w.impl != nullptr);

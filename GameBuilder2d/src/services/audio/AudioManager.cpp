@@ -22,6 +22,7 @@ using gb2d::logging::LogManager;
 
 struct Settings {
     bool enabled{true};
+    bool diagnosticsLoggingEnabled{true};
     float masterVolume{1.0f};
     float musicVolume{1.0f};
     float sfxVolume{1.0f};
@@ -29,6 +30,8 @@ struct Settings {
     std::vector<std::filesystem::path> searchPaths{};
     std::vector<std::string> preloadSounds{};
     std::vector<std::string> preloadMusic{};
+    std::unordered_map<std::string, std::string> preloadSoundAliases{};
+    std::unordered_map<std::string, std::string> preloadMusicAliases{};
 };
 
 struct SoundRecord {
@@ -96,15 +99,22 @@ void publishAudioEvent(AudioEventType type, const std::string& key = "", const s
         details
     };
     
-    LogManager::info("AudioManager publishing event: type={}, key='{}', subscriptions={}", 
-                     static_cast<int>(type), key, st.eventSubscriptions.size());
+    const bool diagnosticsLogging = st.settings.diagnosticsLoggingEnabled;
+    if (diagnosticsLogging) {
+        LogManager::info("AudioManager publishing event: type={}, key='{}', subscriptions={}", 
+                         static_cast<int>(type), key, st.eventSubscriptions.size());
+    }
     
     for (const auto& subscription : st.eventSubscriptions) {
         if (subscription.active && subscription.sink) {
-            LogManager::info("AudioManager calling onAudioEvent for subscription ID {}", subscription.id);
+            if (diagnosticsLogging) {
+                LogManager::info("AudioManager calling onAudioEvent for subscription ID {}", subscription.id);
+            }
             subscription.sink->onAudioEvent(event);
         } else {
-            LogManager::warn("AudioManager skipping inactive subscription ID {}", subscription.id);
+            if (diagnosticsLogging) {
+                LogManager::warn("AudioManager skipping inactive subscription ID {}", subscription.id);
+            }
         }
     }
 }
@@ -215,6 +225,18 @@ std::optional<std::size_t> findFreeSoundSlotIndex(ManagerState& st) {
     return std::nullopt;
 }
 
+std::string trimCopy(const std::string& value) {
+    auto begin = value.begin();
+    while (begin != value.end() && std::isspace(static_cast<unsigned char>(*begin))) {
+        ++begin;
+    }
+    auto end = value.end();
+    while (end != begin && std::isspace(static_cast<unsigned char>(*(end - 1)))) {
+        --end;
+    }
+    return std::string(begin, end);
+}
+
 std::string canonicalizeKey(const std::string& raw) {
     std::string key = raw;
     std::replace(key.begin(), key.end(), '\\', '/');
@@ -222,6 +244,10 @@ std::string canonicalizeKey(const std::string& raw) {
         return static_cast<char>(std::tolower(ch));
     });
     return key;
+}
+
+std::string canonicalizeConfigIdentifier(const std::string& value) {
+    return canonicalizeKey(trimCopy(value));
 }
 
 std::string canonicalizePath(const std::filesystem::path& path) {
@@ -371,26 +397,64 @@ void stopMusicRecord(const AudioManager::RaylibHooks& api, MusicRecord& record) 
 
 Settings loadSettings() {
     Settings s;
-    s.enabled = ConfigurationManager::getBool("audio::enabled", true);
-    s.masterVolume = std::clamp(ConfigurationManager::getDouble("audio::master_volume", 1.0), 0.0, 1.0);
-    s.musicVolume = std::clamp(ConfigurationManager::getDouble("audio::music_volume", 1.0), 0.0, 1.0);
-    s.sfxVolume = std::clamp(ConfigurationManager::getDouble("audio::sfx_volume", 1.0), 0.0, 1.0);
-    auto maxSlots = ConfigurationManager::getInt("audio::max_concurrent_sounds", 16);
+    const bool legacyEnabled = ConfigurationManager::getBool("audio::enabled", true);
+    s.enabled = ConfigurationManager::getBool("audio::core::enabled", legacyEnabled);
+
+    const bool legacyDiagnostics = ConfigurationManager::getBool("audio::diagnostics_logging", true);
+    s.diagnosticsLoggingEnabled = ConfigurationManager::getBool("audio::core::diagnostics_logging", legacyDiagnostics);
+
+    const double legacyMaster = ConfigurationManager::getDouble("audio::master_volume", 1.0);
+    s.masterVolume = std::clamp(ConfigurationManager::getDouble("audio::volumes::master", legacyMaster), 0.0, 1.0);
+
+    const double legacyMusic = ConfigurationManager::getDouble("audio::music_volume", 1.0);
+    s.musicVolume = std::clamp(ConfigurationManager::getDouble("audio::volumes::music", legacyMusic), 0.0, 1.0);
+
+    const double legacySfx = ConfigurationManager::getDouble("audio::sfx_volume", 1.0);
+    s.sfxVolume = std::clamp(ConfigurationManager::getDouble("audio::volumes::sfx", legacySfx), 0.0, 1.0);
+
+    const int legacyMaxSlots = ConfigurationManager::getInt("audio::max_concurrent_sounds", 16);
+    auto maxSlots = ConfigurationManager::getInt("audio::engine::max_concurrent_sounds", legacyMaxSlots);
     if (maxSlots < 0) maxSlots = 0;
     s.maxConcurrentSounds = static_cast<std::size_t>(maxSlots);
-    auto paths = ConfigurationManager::getStringList("audio::search_paths", {"assets/audio"});
+
+    auto legacyPaths = ConfigurationManager::getStringList("audio::search_paths", {"assets/audio"});
+    auto paths = ConfigurationManager::getStringList("audio::engine::search_paths", legacyPaths);
     s.searchPaths.reserve(paths.size());
     for (const auto& p : paths) {
         s.searchPaths.emplace_back(p);
     }
-    s.preloadSounds = ConfigurationManager::getStringList("audio::preload_sounds", {});
-    s.preloadMusic = ConfigurationManager::getStringList("audio::preload_music", {});
+
+    auto legacyPreloadSounds = ConfigurationManager::getStringList("audio::preload_sounds", {});
+    s.preloadSounds = ConfigurationManager::getStringList("audio::preload::sounds", legacyPreloadSounds);
+
+    auto legacyPreloadMusic = ConfigurationManager::getStringList("audio::preload_music", {});
+    s.preloadMusic = ConfigurationManager::getStringList("audio::preload::music", legacyPreloadMusic);
+
+    auto legacySoundAliasMap = ConfigurationManager::getStringMap("audio::sound_aliases", {});
+    auto soundAliasMap = ConfigurationManager::getStringMap("audio::preload::sound_aliases", legacySoundAliasMap);
+    for (const auto& [rawKey, rawAlias] : soundAliasMap) {
+        std::string canonical = canonicalizeConfigIdentifier(rawKey);
+        std::string trimmedAlias = trimCopy(rawAlias);
+        if (!canonical.empty() && !trimmedAlias.empty()) {
+            s.preloadSoundAliases[canonical] = trimmedAlias;
+        }
+    }
+    auto legacyMusicAliasMap = ConfigurationManager::getStringMap("audio::music_aliases", {});
+    auto musicAliasMap = ConfigurationManager::getStringMap("audio::preload::music_aliases", legacyMusicAliasMap);
+    for (const auto& [rawKey, rawAlias] : musicAliasMap) {
+        std::string canonical = canonicalizeConfigIdentifier(rawKey);
+        std::string trimmedAlias = trimCopy(rawAlias);
+        if (!canonical.empty() && !trimmedAlias.empty()) {
+            s.preloadMusicAliases[canonical] = trimmedAlias;
+        }
+    }
     return s;
 }
 
 AudioConfig toConfig(const Settings& s, bool initialized, bool deviceReady, bool silentMode) {
     AudioConfig cfg;
     cfg.enabled = s.enabled;
+    cfg.diagnosticsLoggingEnabled = s.diagnosticsLoggingEnabled;
     cfg.masterVolume = s.masterVolume;
     cfg.musicVolume = s.musicVolume;
     cfg.sfxVolume = s.sfxVolume;
@@ -401,6 +465,8 @@ AudioConfig toConfig(const Settings& s, bool initialized, bool deviceReady, bool
     }
     cfg.preloadSounds = s.preloadSounds;
     cfg.preloadMusic = s.preloadMusic;
+    cfg.soundAliases = s.preloadSoundAliases;
+    cfg.musicAliases = s.preloadMusicAliases;
     (void)initialized;
     (void)deviceReady;
     (void)silentMode;
@@ -452,13 +518,23 @@ bool AudioManager::init() {
     lock.unlock();
     if (canPreload) {
         for (const auto& soundId : preloadSounds) {
-            auto result = acquireSound(soundId);
+            std::optional<std::string> aliasOpt;
+            auto aliasIt = st.settings.preloadSoundAliases.find(canonicalizeConfigIdentifier(soundId));
+            if (aliasIt != st.settings.preloadSoundAliases.end() && !aliasIt->second.empty()) {
+                aliasOpt = aliasIt->second;
+            }
+            auto result = acquireSound(soundId, aliasOpt);
             if (result.placeholder) {
                 LogManager::warn("Failed to preload sound '{}'", soundId);
             }
         }
         for (const auto& musicId : preloadMusic) {
-            auto result = acquireMusic(musicId);
+            std::optional<std::string> aliasOpt;
+            auto aliasIt = st.settings.preloadMusicAliases.find(canonicalizeConfigIdentifier(musicId));
+            if (aliasIt != st.settings.preloadMusicAliases.end() && !aliasIt->second.empty()) {
+                aliasOpt = aliasIt->second;
+            }
+            auto result = acquireMusic(musicId, aliasOpt);
             if (result.placeholder) {
                 LogManager::warn("Failed to preload music '{}'", musicId);
             }

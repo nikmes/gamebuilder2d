@@ -83,11 +83,11 @@
   - ⚠ Need to test preview functionality once implemented
 
 ## Documentation
-- [ ] T216 — Update docs for AudioManagerWindow usage
-  - Need: Document how to open the Audio Manager window
-  - Need: Document preview controls usage
-  - Need: Document config editing workflow
-  - Need: Document event log interpretation
+- [x] T216 — Update docs for AudioManagerWindow usage
+  - ✓ Documented how to open the Audio Manager window (`docs/audio-manager-window.md`)
+  - ✓ Documented preview controls usage
+  - ✓ Documented config editing workflow
+  - ✓ Documented event log interpretation
 
 ---
 
