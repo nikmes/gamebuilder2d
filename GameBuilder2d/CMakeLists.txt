@@ -31,6 +31,8 @@ add_library(gb2d_window STATIC
   "src/ui/Windows/HotkeysWindow.cpp"
   "src/ui/Windows/ConfigurationWindow.h"
   "src/ui/Windows/ConfigurationWindow.cpp"
+  "src/ui/Windows/AudioManagerWindow.h"
+  "src/ui/Windows/AudioManagerWindow.cpp"
   "src/ui/FullscreenSession.h"
   "src/ui/FullscreenSession.cpp"
 )

@@ -36,6 +36,7 @@ public:
         std::string id;
         std::string title;
         bool open{true};
+        std::optional<Size> initialSize{}; // preferred first-use size
         std::optional<Size> minSize{}; // optional per-window min size
         // Optional modular implementation (new window system). When present,
         // title/minSize should be sourced from impl at render-time.

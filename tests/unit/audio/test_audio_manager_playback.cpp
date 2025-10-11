@@ -4,6 +4,7 @@
 #include "services/audio/AudioManager.h"
 #include "services/configuration/ConfigurationManager.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
@@ -47,6 +48,8 @@ public:
         bool playing{false};
         bool paused{false};
         float volume{1.0f};
+        float length{120.0f};
+        float position{0.0f};
     };
 
     static void reset() {
@@ -119,7 +122,9 @@ public:
             updateMusicStream,
             isMusicStreamPlaying,
             setMusicVolume,
-            seekMusicStream};
+            seekMusicStream,
+            getMusicTimeLength,
+            getMusicTimePlayed};
         return api;
     }
 
@@ -214,6 +219,7 @@ private:
         auto& info = StubRaylib::music()[idForMusic(music)];
         info.playing = true;
         info.paused = false;
+        info.position = 0.0f;
     }
 
     static void pauseMusicStream(Music music) {
@@ -231,13 +237,18 @@ private:
     static void stopMusicStream(Music music) {
         std::lock_guard lock(mutex());
         StubRaylib::music()[idForMusic(music)].playing = false;
+        StubRaylib::music()[idForMusic(music)].paused = false;
+        StubRaylib::music()[idForMusic(music)].position = 0.0f;
     }
 
     static void updateMusicStream(Music music) {
         std::lock_guard lock(mutex());
         auto& info = StubRaylib::music()[idForMusic(music)];
         if (info.playing && !info.paused) {
-            info.playing = false; // auto-finish to exercise completion path
+            info.position = std::min(info.position + 1.0f, info.length);
+            if (info.position >= info.length) {
+                info.playing = false; // auto-finish to exercise completion path
+            }
         }
     }
 
@@ -255,8 +266,20 @@ private:
         StubRaylib::music()[idForMusic(music)].volume = volume;
     }
 
-    static void seekMusicStream(Music, float) {
-        // no-op for tests
+    static void seekMusicStream(Music music, float positionSeconds) {
+        std::lock_guard lock(mutex());
+        auto& info = StubRaylib::music()[idForMusic(music)];
+        info.position = std::clamp(positionSeconds, 0.0f, info.length);
+    }
+
+    static float getMusicTimeLength(Music music) {
+        std::lock_guard lock(mutex());
+        return StubRaylib::music()[idForMusic(music)].length;
+    }
+
+    static float getMusicTimePlayed(Music music) {
+        std::lock_guard lock(mutex());
+        return StubRaylib::music()[idForMusic(music)].position;
     }
 
     static std::unordered_map<std::uintptr_t, SoundInfo>& sounds() {
@@ -302,14 +325,16 @@ struct AudioTestFixture {
         std::ofstream(soundPath).put('\0');
         std::ofstream(musicPath).put('\0');
 
-        ConfigurationManager::set("audio::enabled", true);
-        ConfigurationManager::set("audio::master_volume", 0.75);
-        ConfigurationManager::set("audio::music_volume", 0.5);
-        ConfigurationManager::set("audio::sfx_volume", 0.8);
-        ConfigurationManager::set("audio::max_concurrent_sounds", static_cast<int64_t>(2));
-        ConfigurationManager::set("audio::search_paths", std::vector<std::string>{tempDir.string()});
-        ConfigurationManager::set("audio::preload_sounds", std::vector<std::string>{});
-        ConfigurationManager::set("audio::preload_music", std::vector<std::string>{});
+        ConfigurationManager::set("audio::core::enabled", true);
+        ConfigurationManager::set("audio::volumes::master", 0.75);
+        ConfigurationManager::set("audio::volumes::music", 0.5);
+        ConfigurationManager::set("audio::volumes::sfx", 0.8);
+        ConfigurationManager::set("audio::engine::max_concurrent_sounds", static_cast<int64_t>(2));
+        ConfigurationManager::set(
+            "audio::engine::search_paths",
+            std::vector<std::string>{tempDir.string()});
+        ConfigurationManager::set("audio::preload::sounds", std::vector<std::string>{});
+        ConfigurationManager::set("audio::preload::music", std::vector<std::string>{});
 
         backend.ready = true;
         AudioManager::setBackendForTesting(&backend);
@@ -394,4 +419,45 @@ TEST_CASE_METHOD(AudioTestFixture, "AudioManager music controls propagate to hoo
     REQUIRE(AudioManager::stopMusic(music.key));
     info = StubRaylib::getMusicInfo(*music.music);
     REQUIRE_FALSE(info.playing);
+}
+
+TEST_CASE_METHOD(AudioTestFixture, "AudioManager reports music playback status", "[audio][music][status]") {
+    auto music = AudioManager::acquireMusic("loop.ogg");
+    REQUIRE_FALSE(music.placeholder);
+
+    REQUIRE(AudioManager::playMusic(music.key));
+
+    auto status = AudioManager::musicPlaybackStatus(music.key);
+    REQUIRE(status.valid);
+    REQUIRE(status.playing);
+    REQUIRE_FALSE(status.paused);
+    REQUIRE(status.positionSeconds == Catch::Approx(0.0f));
+    REQUIRE(status.durationSeconds == Catch::Approx(120.0f));
+
+    AudioManager::tick();
+    status = AudioManager::musicPlaybackStatus(music.key);
+    REQUIRE(status.positionSeconds == Catch::Approx(1.0f));
+    REQUIRE(status.durationSeconds == Catch::Approx(120.0f));
+
+    REQUIRE(AudioManager::seekMusic(music.key, 42.5f));
+    status = AudioManager::musicPlaybackStatus(music.key);
+    REQUIRE(status.positionSeconds == Catch::Approx(42.5f).margin(1e-3f));
+    REQUIRE(status.durationSeconds == Catch::Approx(120.0f));
+
+    REQUIRE(AudioManager::pauseMusic(music.key));
+    status = AudioManager::musicPlaybackStatus(music.key);
+    REQUIRE(status.paused);
+    REQUIRE(status.playing);
+
+    REQUIRE(AudioManager::resumeMusic(music.key));
+    status = AudioManager::musicPlaybackStatus(music.key);
+    REQUIRE_FALSE(status.paused);
+    REQUIRE(status.playing);
+
+    REQUIRE(AudioManager::stopMusic(music.key));
+    status = AudioManager::musicPlaybackStatus(music.key);
+    REQUIRE(status.valid);
+    REQUIRE_FALSE(status.playing);
+    REQUIRE_FALSE(status.paused);
+    REQUIRE(status.positionSeconds == Catch::Approx(0.0f));
 }

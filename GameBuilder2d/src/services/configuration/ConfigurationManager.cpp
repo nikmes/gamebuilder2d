@@ -2,80 +2,61 @@
 #include "paths.h"
 #include "json_io.h"
 #include "services/hotkey/HotKeyActions.h"
+#include <algorithm>
+#include <array>
+#include <cctype>
 #include <cstdio>
+#include <cstdlib>
+#include <filesystem>
+#include <functional>
+#include <map>
+#include <mutex>
+#include <optional>
+#include <regex>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <vector>
 #include <nlohmann/json.hpp>
 using nlohmann::json;
-#include <filesystem>
-#include <cstdlib>
-#include <string_view>
-#include <cctype>
-#include <mutex>
-#include <map>
-#include <set>
-#include <optional>
-#include <array>
-#include <utility>
-#include <algorithm>
-#include <regex>
-#include <sstream>
-#include <iomanip>
-#include <cmath>
-
-#if !defined(_WIN32)
-extern "C" char **environ;
-#endif
 
 namespace gb2d {
+
 namespace {
-	static constexpr int kCurrentConfigVersion = 1;
 
-	namespace hotkey_actions = gb2d::hotkeys::actions;
+namespace hotkey_actions = gb2d::hotkeys::actions;
 
-	const json* get_by_path(const json& j, const std::string& path);
-	json& ensure_json_path(json& j, const std::string& path);
-	bool validate_enum(const ConfigFieldDesc& desc, const std::string& value, FieldValidationState& state, ValidationPhase phase);
-	std::string enum_values_hint(const ConfigFieldDesc& desc);
-	std::optional<std::string> path_mode_for(const ConfigFieldDesc& desc);
-	bool value_is_present(const ConfigValue& value) noexcept;
-	FieldValidationState validate_boolean(const ConfigValue& value);
-	FieldValidationState validate_integer(const ConfigFieldDesc& desc, const ConfigValue& value);
-	FieldValidationState validate_float(const ConfigFieldDesc& desc, const ConfigValue& value);
-	FieldValidationState validate_enum_value(const ConfigFieldDesc& desc, const ConfigValue& value, ValidationPhase phase);
-	FieldValidationState validate_string_value(const ConfigFieldDesc& desc, const ConfigValue& value);
-	FieldValidationState validate_path_value(const ConfigFieldDesc& desc, const ConfigValue& value);
-	FieldValidationState validate_list_value(const ConfigFieldDesc& desc, const ConfigValue& value);
-	FieldValidationState validate_numeric_range(const ConfigFieldDesc& desc, double value);
-	FieldValidationState validate_list(const ConfigFieldDesc& desc, const std::vector<std::string>& list);
-	FieldValidationState validate_path(const ConfigFieldDesc& desc, const std::string& path);
-	FieldValidationState validate_string_regex(const ConfigFieldDesc& desc, const std::string& value);
+constexpr int kCurrentConfigVersion = 1;
 
-	using HotkeyDefault = std::pair<const char*, const char*>;
-	constexpr std::array<HotkeyDefault, 22> kDefaultHotkeys = {{
-		{hotkey_actions::OpenFileDialog,       "Ctrl+O"},
-		{hotkey_actions::OpenImageDialog,      "Ctrl+Shift+O"},
-		{hotkey_actions::ToggleEditorFullscreen, "F11"},
-		{hotkey_actions::FocusTextEditor,      "Ctrl+Shift+E"},
-		{hotkey_actions::ShowConsole,          "Ctrl+Shift+C"},
-		{hotkey_actions::SpawnDockWindow,      "Ctrl+Shift+N"},
-		{hotkey_actions::OpenConfigurationWindow, "Ctrl+,"},
-		{hotkey_actions::OpenHotkeySettings,   "Ctrl+Alt+K"},
-		{hotkey_actions::SaveLayout,           "Ctrl+Alt+S"},
-		{hotkey_actions::OpenLayoutManager,    "Ctrl+Alt+L"},
-		{hotkey_actions::CodeNewFile,          "Ctrl+N"},
-		{hotkey_actions::CodeOpenFile,         "Ctrl+Shift+O"},
-		{hotkey_actions::CodeSaveFile,         "Ctrl+S"},
-		{hotkey_actions::CodeSaveFileAs,       "Ctrl+Shift+S"},
-		{hotkey_actions::CodeSaveAll,          "Ctrl+Alt+S"},
-		{hotkey_actions::CodeCloseTab,         "Ctrl+W"},
-		{hotkey_actions::CodeCloseAllTabs,     "Ctrl+Shift+W"},
-		{hotkey_actions::GameToggleFullscreen, "Alt+Enter"},
-		{hotkey_actions::GameReset,            "Ctrl+R"},
-		{hotkey_actions::GameCycleNext,        "Ctrl+Tab"},
-		{hotkey_actions::GameCyclePrev,        "Ctrl+Shift+Tab"},
-		{hotkey_actions::FullscreenExit,       "Esc"},
-	}};
+constexpr std::array<std::pair<const char*, const char*>, 22> kDefaultHotkeys = {{
+	{hotkey_actions::OpenFileDialog, "Ctrl+O"},
+	{hotkey_actions::OpenImageDialog, "Ctrl+Shift+O"},
+	{hotkey_actions::ToggleEditorFullscreen, "F11"},
+	{hotkey_actions::FocusTextEditor, "Ctrl+Shift+E"},
+	{hotkey_actions::ShowConsole, "Ctrl+Shift+C"},
+	{hotkey_actions::SpawnDockWindow, "Ctrl+Shift+N"},
+	{hotkey_actions::OpenConfigurationWindow, "Ctrl+,"},
+	{hotkey_actions::OpenHotkeySettings, "Ctrl+Alt+K"},
+	{hotkey_actions::SaveLayout, "Ctrl+Alt+S"},
+	{hotkey_actions::OpenLayoutManager, "Ctrl+Alt+L"},
+	{hotkey_actions::CodeNewFile, "Ctrl+N"},
+	{hotkey_actions::CodeOpenFile, "Ctrl+Shift+O"},
+	{hotkey_actions::CodeSaveFile, "Ctrl+S"},
+	{hotkey_actions::CodeSaveFileAs, "Ctrl+Shift+S"},
+	{hotkey_actions::CodeSaveAll, "Ctrl+Alt+S"},
+	{hotkey_actions::CodeCloseTab, "Ctrl+W"},
+	{hotkey_actions::CodeCloseAllTabs, "Ctrl+Shift+W"},
+	{hotkey_actions::GameToggleFullscreen, "Alt+Enter"},
+	{hotkey_actions::GameReset, "Ctrl+R"},
+	{hotkey_actions::GameCycleNext, "Ctrl+Tab"},
+	{hotkey_actions::GameCyclePrev, "Ctrl+Shift+Tab"},
+	{hotkey_actions::FullscreenExit, "Esc"}
+}};
 
-	json buildHotkeyDefaultsArray() {
+json& ensure_json_path(json& j, const std::string& path);
+const json* get_by_path(const json& j, const std::string& path);
+
+json buildHotkeyDefaultsArray() {
 		json arr = json::array();
 		for (const auto& [actionId, shortcut] : kDefaultHotkeys) {
 			json entry = json::object();
@@ -236,69 +217,91 @@ namespace {
 		builder.section("audio", [](ConfigSectionBuilder& section) {
 			section.label("Audio")
 				.description("Audio device routing, volumes, and preloading options.");
-			section.field("audio.enabled", ConfigFieldType::Boolean, [](ConfigFieldBuilder& field) {
-				field.label("Enable Audio")
-					.description("Master switch that mutes or enables all audio playback.")
-					.defaultBool(true);
+
+			section.section("audio.core", [](ConfigSectionBuilder& core) {
+				core.label("Core Settings");
+				core.field("audio.core.enabled", ConfigFieldType::Boolean, [](ConfigFieldBuilder& field) {
+					field.label("Enable Audio")
+						.description("Master switch that mutes or enables all audio playback.")
+						.defaultBool(true);
+				});
+				core.field("audio.core.diagnostics_logging", ConfigFieldType::Boolean, [](ConfigFieldBuilder& field) {
+					field.label("Diagnostics Logging")
+						.description("Capture verbose audio diagnostics and event logs in the Audio Manager window.")
+						.defaultBool(true)
+						.advanced();
+				});
 			});
-			section.field("audio.master_volume", ConfigFieldType::Float, [](ConfigFieldBuilder& field) {
-				field.label("Master Volume")
-					.description("Global gain multiplier applied to all audio channels.")
-					.defaultFloat(1.0)
-					.min(0.0)
-					.max(1.0)
-					.step(0.01)
-					.precision(2);
+
+			section.section("audio.volumes", [](ConfigSectionBuilder& volumes) {
+				volumes.label("Mix Levels");
+				volumes.field("audio.volumes.master", ConfigFieldType::Float, [](ConfigFieldBuilder& field) {
+					field.label("Master Volume")
+						.description("Global gain multiplier applied to all audio channels.")
+						.defaultFloat(1.0)
+						.min(0.0)
+						.max(1.0)
+						.step(0.01)
+						.precision(2);
+				});
+				volumes.field("audio.volumes.music", ConfigFieldType::Float, [](ConfigFieldBuilder& field) {
+					field.label("Music Volume")
+						.description("Gain applied to music tracks.")
+						.defaultFloat(1.0)
+						.min(0.0)
+						.max(1.0)
+						.step(0.01)
+						.precision(2);
+				});
+				volumes.field("audio.volumes.sfx", ConfigFieldType::Float, [](ConfigFieldBuilder& field) {
+					field.label("SFX Volume")
+						.description("Gain applied to sound effects.")
+						.defaultFloat(1.0)
+						.min(0.0)
+						.max(1.0)
+						.step(0.01)
+						.precision(2);
+				});
 			});
-			section.field("audio.music_volume", ConfigFieldType::Float, [](ConfigFieldBuilder& field) {
-				field.label("Music Volume")
-					.description("Gain applied to music tracks.")
-					.defaultFloat(1.0)
-					.min(0.0)
-					.max(1.0)
-					.step(0.01)
-					.precision(2);
+
+			section.section("audio.engine", [](ConfigSectionBuilder& engine) {
+				engine.label("Engine");
+				engine.field("audio.engine.max_concurrent_sounds", ConfigFieldType::Integer, [](ConfigFieldBuilder& field) {
+					field.label("Max Concurrent Sounds")
+						.description("Upper bound on simultaneously playing sound effects.")
+						.defaultInt(16)
+						.min(1.0)
+						.max(128.0)
+						.step(1.0)
+						.advanced();
+				});
+				engine.field("audio.engine.search_paths", ConfigFieldType::List, [](ConfigFieldBuilder& field) {
+					field.label("Asset Search Paths")
+						.description("Directories scanned when resolving audio assets.")
+						.defaultStringList({"assets/audio"});
+					field.uiHint("itemPlaceholder", "assets/audio");
+					field.uiHint("pathMode", "directory");
+				});
 			});
-			section.field("audio.sfx_volume", ConfigFieldType::Float, [](ConfigFieldBuilder& field) {
-				field.label("SFX Volume")
-					.description("Gain applied to sound effects.")
-					.defaultFloat(1.0)
-					.min(0.0)
-					.max(1.0)
-					.step(0.01)
-					.precision(2);
-			});
-			section.field("audio.max_concurrent_sounds", ConfigFieldType::Integer, [](ConfigFieldBuilder& field) {
-				field.label("Max Concurrent Sounds")
-					.description("Upper bound on simultaneously playing sound effects.")
-					.defaultInt(16)
-					.min(1.0)
-					.max(128.0)
-					.step(1.0)
-					.advanced();
-			});
-			section.field("audio.search_paths", ConfigFieldType::List, [](ConfigFieldBuilder& field) {
-				field.label("Asset Search Paths")
-					.description("Directories scanned when resolving audio assets.")
-					.defaultStringList({"assets/audio"});
-				field.uiHint("itemPlaceholder", "assets/audio");
-				field.uiHint("pathMode", "directory");
-			});
-			section.field("audio.preload_sounds", ConfigFieldType::List, [](ConfigFieldBuilder& field) {
-				field.label("Preload Sounds")
-					.description("Sound effect files warmed at startup. Leave empty to load on demand.")
-					.defaultStringList(std::vector<std::string>{})
-					.advanced();
-				field.uiHint("pathMode", "file");
-				field.uiHint("itemPlaceholder", "assets/audio/ui/click.wav");
-			});
-			section.field("audio.preload_music", ConfigFieldType::List, [](ConfigFieldBuilder& field) {
-				field.label("Preload Music")
-					.description("Music file paths loaded eagerly at startup.")
-					.defaultStringList(std::vector<std::string>{})
-					.advanced();
-				field.uiHint("pathMode", "file");
-				field.uiHint("itemPlaceholder", "assets/audio/music/theme.ogg");
+
+			section.section("audio.preload", [](ConfigSectionBuilder& preload) {
+				preload.label("Preload");
+				preload.field("audio.preload.sounds", ConfigFieldType::List, [](ConfigFieldBuilder& field) {
+					field.label("Preload Sounds")
+						.description("Sound effect files warmed at startup. Leave empty to load on demand.")
+						.defaultStringList(std::vector<std::string>{})
+						.advanced();
+					field.uiHint("pathMode", "file");
+					field.uiHint("itemPlaceholder", "assets/audio/ui/click.wav");
+				});
+				preload.field("audio.preload.music", ConfigFieldType::List, [](ConfigFieldBuilder& field) {
+					field.label("Preload Music")
+						.description("Music file paths loaded eagerly at startup.")
+						.defaultStringList(std::vector<std::string>{})
+						.advanced();
+					field.uiHint("pathMode", "file");
+					field.uiHint("itemPlaceholder", "assets/audio/music/theme.ogg");
+				});
 			});
 		});
 
@@ -405,6 +408,106 @@ namespace {
 
 	bool starts_with(std::string_view s, std::string_view pfx) {
 		return s.size() >= pfx.size() && 0 == s.compare(0, pfx.size(), pfx);
+	}
+
+	void migrate_legacy_audio(json& root) {
+		if (!root.is_object()) {
+			return;
+		}
+
+		json& audioSection = ensure_json_path(root, "audio");
+		if (!audioSection.is_object()) {
+			audioSection = json::object();
+		}
+
+		auto move_if_absent = [&](const char* legacyKey, const char* newPath) {
+			auto it = audioSection.find(legacyKey);
+			if (it == audioSection.end()) {
+				return;
+			}
+			const json* existing = get_by_path(root, newPath);
+			if (!existing || existing->is_null()) {
+				ensure_json_path(root, newPath) = *it;
+			}
+			audioSection.erase(it);
+		};
+
+		move_if_absent("enabled", "audio.core.enabled");
+		move_if_absent("diagnostics_logging", "audio.core.diagnostics_logging");
+		move_if_absent("master_volume", "audio.volumes.master");
+		move_if_absent("music_volume", "audio.volumes.music");
+		move_if_absent("sfx_volume", "audio.volumes.sfx");
+		move_if_absent("max_concurrent_sounds", "audio.engine.max_concurrent_sounds");
+		move_if_absent("search_paths", "audio.engine.search_paths");
+		move_if_absent("preload_sounds", "audio.preload.sounds");
+		move_if_absent("preload_music", "audio.preload.music");
+		move_if_absent("sound_aliases", "audio.preload.sound_aliases");
+		move_if_absent("music_aliases", "audio.preload.music_aliases");
+	}
+
+	void ensure_audio_structure(json& root) {
+		json& audio = ensure_json_path(root, "audio");
+		if (!audio.is_object()) {
+			audio = json::object();
+		}
+
+		json& core = ensure_json_path(root, "audio.core");
+		if (!core.is_object()) {
+			core = json::object();
+		}
+		if (!core.contains("enabled") || !core["enabled"].is_boolean()) {
+			core["enabled"] = true;
+		}
+		if (!core.contains("diagnostics_logging") || !core["diagnostics_logging"].is_boolean()) {
+			core["diagnostics_logging"] = true;
+		}
+
+		json& volumes = ensure_json_path(root, "audio.volumes");
+		if (!volumes.is_object()) {
+			volumes = json::object();
+		}
+		if (!volumes.contains("master") || !volumes["master"].is_number()) {
+			volumes["master"] = 1.0;
+		}
+		if (!volumes.contains("music") || !volumes["music"].is_number()) {
+			volumes["music"] = 1.0;
+		}
+		if (!volumes.contains("sfx") || !volumes["sfx"].is_number()) {
+			volumes["sfx"] = 1.0;
+		}
+
+		json& engine = ensure_json_path(root, "audio.engine");
+		if (!engine.is_object()) {
+			engine = json::object();
+		}
+		if (!engine.contains("max_concurrent_sounds") || !engine["max_concurrent_sounds"].is_number_integer()) {
+			engine["max_concurrent_sounds"] = 16;
+		}
+		json& searchPaths = ensure_json_path(root, "audio.engine.search_paths");
+		if (!searchPaths.is_array()) {
+			searchPaths = json::array();
+		}
+
+		json& preload = ensure_json_path(root, "audio.preload");
+		if (!preload.is_object()) {
+			preload = json::object();
+		}
+		json& preloadSounds = ensure_json_path(root, "audio.preload.sounds");
+		if (!preloadSounds.is_array()) {
+			preloadSounds = json::array();
+		}
+		json& preloadMusic = ensure_json_path(root, "audio.preload.music");
+		if (!preloadMusic.is_array()) {
+			preloadMusic = json::array();
+		}
+		json& soundAliases = ensure_json_path(root, "audio.preload.sound_aliases");
+		if (!soundAliases.is_object()) {
+			soundAliases = json::object();
+		}
+		json& musicAliases = ensure_json_path(root, "audio.preload.music_aliases");
+		if (!musicAliases.is_object()) {
+			musicAliases = json::object();
+		}
 	}
 	std::string normalize_key(std::string key) {
 		if (key.find("::") == std::string::npos) return key;
@@ -829,16 +932,28 @@ void ConfigurationManager::loadOrDefault() {
 	ensure_json_path(c, "textures.generate_mipmaps") = false;
 	ensure_json_path(c, "textures.max_bytes") = 0;
 	ensure_json_path(c, "textures.placeholder_path") = "";
-	ensure_json_path(c, "audio.enabled") = true;
-	ensure_json_path(c, "audio.master_volume") = 1.0;
-	ensure_json_path(c, "audio.music_volume") = 1.0;
-	ensure_json_path(c, "audio.sfx_volume") = 1.0;
-	ensure_json_path(c, "audio.max_concurrent_sounds") = 16;
-	auto& audioSearch = ensure_json_path(c, "audio.search_paths");
+	auto& audioCore = ensure_json_path(c, "audio.core");
+	audioCore = json::object();
+	ensure_json_path(c, "audio.core.enabled") = true;
+	ensure_json_path(c, "audio.core.diagnostics_logging") = true;
+	auto& audioVolumes = ensure_json_path(c, "audio.volumes");
+	audioVolumes = json::object();
+	ensure_json_path(c, "audio.volumes.master") = 1.0;
+	ensure_json_path(c, "audio.volumes.music") = 1.0;
+	ensure_json_path(c, "audio.volumes.sfx") = 1.0;
+	auto& audioEngine = ensure_json_path(c, "audio.engine");
+	audioEngine = json::object();
+	ensure_json_path(c, "audio.engine.max_concurrent_sounds") = 16;
+	auto& audioSearch = ensure_json_path(c, "audio.engine.search_paths");
 	audioSearch = json::array();
 	audioSearch.push_back("assets/audio");
-	ensure_json_path(c, "audio.preload_sounds") = json::array();
-	ensure_json_path(c, "audio.preload_music") = json::array();
+	auto& audioPreload = ensure_json_path(c, "audio.preload");
+	audioPreload = json::object();
+	ensure_json_path(c, "audio.preload.sounds") = json::array();
+	ensure_json_path(c, "audio.preload.music") = json::array();
+	ensure_json_path(c, "audio.preload.sound_aliases") = json::object();
+	ensure_json_path(c, "audio.preload.music_aliases") = json::object();
+	ensure_audio_structure(c);
 	ensureHotkeyDefaults(c, true);
 	size_t overrides = apply_env_overrides(c);
 	(void)overrides; // no logging
@@ -872,9 +987,13 @@ bool ConfigurationManager::load() {
 	}
 	(void)fromVer; // suppress unused if no logging
 	cfg() = std::move(*j);
+	migrate_legacy_audio(cfg());
+	ensure_audio_structure(cfg());
 	ensureHotkeyDefaults(cfg(), false);
 	size_t overrides2 = apply_env_overrides(cfg());
 	(void)overrides2;
+	migrate_legacy_audio(cfg());
+	ensure_audio_structure(cfg());
 
 	// Notify reload hooks
 	for (const auto& hook : reload_hooks()) {
@@ -968,6 +1087,23 @@ std::vector<std::string> ConfigurationManager::getStringList(const std::string& 
 		out.reserve(v->size());
 		for (const auto& e : *v) {
 			if (e.is_string()) out.push_back(e.get<std::string>());
+		}
+		return out;
+	}
+	return defaultValue;
+}
+
+std::unordered_map<std::string, std::string> ConfigurationManager::getStringMap(
+	const std::string& key,
+	const std::unordered_map<std::string, std::string>& defaultValue) {
+	const json* v = get_by_path(cfg(), normalize_key(key));
+	if (v && v->is_object()) {
+		std::unordered_map<std::string, std::string> out;
+		out.reserve(v->size());
+		for (const auto& [mapKey, mapValue] : v->items()) {
+			if (mapValue.is_string()) {
+				out.emplace(mapKey, mapValue.get<std::string>());
+			}
 		}
 		return out;
 	}
@@ -1120,4 +1256,4 @@ FieldValidationState ConfigurationManager::validateFieldValue(std::string_view i
 	state.message = "Unknown configuration field.";
 	return state;
 }
-}
+} // namespace gb2d

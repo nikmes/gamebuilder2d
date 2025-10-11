@@ -46,15 +46,15 @@ As a GameBuilder2d developer, I can request audio playback (sound effects or mus
 ### Clarification Outcomes *(2025-10-01)*
 - **Silent mode policy**: When audio device initialization fails (or `audio::enabled` is `false`), the manager enters silent mode. All public APIs remain callable, but they return placeholder handles and skip Raylib playback. Initialization logs the failure reason, diagnostics expose `silentMode=true`, and follow-up calls avoid reopening the device until `resetForTesting()` or process restart.
 - **Configuration schema**:
-	- `audio::enabled` *(bool, default `true`)* — toggles the entire manager.
-	- `audio::master_volume` *(double 0.0–1.0, default `1.0`)* — forwarded to `SetMasterVolume` when the device is ready.
-	- `audio::music_volume` *(double 0.0–1.0, default `1.0`)* — applied per music stream.
-	- `audio::sfx_volume` *(double 0.0–1.0, default `1.0`)* — applied per active sound slot.
-	- `audio::max_concurrent_sounds` *(int ≥0, default `16`)* — caps simultaneous sound slots; overflow requests are dropped with throttling logs.
-	- `audio::search_paths` *(string list, default `["assets/audio"]`)* — ordered lookup roots for relative identifiers.
-	- `audio::preload_sounds` *(string list, default `[]`)* — identifiers preloaded during init when the device is ready.
-	- `audio::preload_music` *(string list, default `[]`)* — identifiers preloaded as streaming music.
-	- Migration: existing configs without the `audio` block adopt defaults automatically; no schema bump required beyond documenting the new keys.
+	- `audio::core::enabled` *(bool, default `true`)* — toggles the entire manager and places the system in silent mode when `false`.
+	- `audio::volumes::master` *(double 0.0–1.0, default `1.0`)* — forwarded to `SetMasterVolume` when the device is ready.
+	- `audio::volumes::music` *(double 0.0–1.0, default `1.0`)* — multiplier applied per music stream.
+	- `audio::volumes::sfx` *(double 0.0–1.0, default `1.0`)* — multiplier applied per active sound slot.
+	- `audio::engine::max_concurrent_sounds` *(int ≥0, default `16`)* — caps simultaneous sound slots; overflow requests are dropped with throttling logs.
+	- `audio::engine::search_paths` *(string list, default `["assets/audio"]`)* — ordered lookup roots for relative identifiers.
+	- `audio::preload::sounds` *(string list, default `[]`)* — canonical identifiers preloaded during init when the device is ready.
+	- `audio::preload::music` *(string list, default `[]`)* — canonical identifiers preloaded as streaming music.
+	- Migration: legacy flat keys (e.g., `audio::master_volume`) are migrated into the namespaced structure automatically on load; no separate config file is introduced.
 - **Placeholder strategy**: Missing or failed sound loads create `Sound` entries flagged as placeholders; playback returns invalid/quiet handles that succeed operationally but emit warnings. Music behaves similarly, staying paused with a placeholder `Music` struct. Diagnostics expose placeholder counts so developers can spot unresolved assets. No synthetic beep is played in v1.
 
 ---

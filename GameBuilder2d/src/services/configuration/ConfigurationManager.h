@@ -4,6 +4,7 @@
 #include <vector>
 #include <cstdint>
 #include <functional>
+#include <unordered_map>
 #include <nlohmann/json_fwd.hpp>
 
 #include "ConfigurationSchema.h"
@@ -23,6 +24,8 @@ public:
     static double getDouble(const std::string& key, double defaultValue);
     static std::string getString(const std::string& key, const std::string& defaultValue);
     static std::vector<std::string> getStringList(const std::string& key, const std::vector<std::string>& defaultValue);
+    static std::unordered_map<std::string, std::string> getStringMap(const std::string& key,
+                                                                     const std::unordered_map<std::string, std::string>& defaultValue);
 
     static void set(const std::string& key, bool value);
     static void set(const std::string& key, int64_t value);

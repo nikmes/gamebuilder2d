@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include <nlohmann/json.hpp>
+#include "services/configuration/ConfigurationManager.h"
 #include "ui/Windows/ConsoleLogWindow.h"
 #include "ui/Windows/CodeEditorWindow.h"
 #include "ui/Windows/FilePreviewWindow.h"
@@ -8,6 +9,7 @@ using nlohmann::json;
 using namespace gb2d;
 
 TEST_CASE("ConsoleLogWindow JSON round-trip", "[windows][json]") {
+    ConfigurationManager::loadOrDefault();
     ConsoleLogWindow a;
     // mutate some state
     json j1; a.serialize(j1);
@@ -33,6 +35,7 @@ TEST_CASE("ConsoleLogWindow JSON round-trip", "[windows][json]") {
 }
 
 TEST_CASE("CodeEditorWindow JSON round-trip", "[windows][json]") {
+    ConfigurationManager::loadOrDefault();
     CodeEditorWindow a;
     // Simulate two tabs: one untitled, one with a bogus path (will still serialize path/title)
     a.newUntitled();
@@ -59,11 +62,12 @@ TEST_CASE("CodeEditorWindow JSON round-trip", "[windows][json]") {
 }
 
 TEST_CASE("FilePreviewWindow JSON round-trip", "[windows][json]") {
+    ConfigurationManager::loadOrDefault();
     FilePreviewWindow a;
     json j1; a.serialize(j1);
-    // Set a fake path; deserialize will try to open, but should not crash; on failure, it keeps state reasonable
+    // Set a fake text path; deserialize will try to open. It should fail gracefully without touching texture/audio backends.
     j1["title"] = std::string("Preview X");
-    j1["path"] = std::string("tests/nope.png");
+    j1["path"] = std::string("tests/nope.txt");
 
     FilePreviewWindow b;
     b.deserialize(j1);

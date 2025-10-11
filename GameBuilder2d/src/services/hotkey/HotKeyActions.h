@@ -9,6 +9,7 @@ inline constexpr const char* FocusTextEditor      = "global.focusTextEditor";
 inline constexpr const char* ShowConsole          = "global.showConsole";
 inline constexpr const char* SpawnDockWindow      = "global.spawnDockWindow";
 inline constexpr const char* OpenConfigurationWindow = "global.openConfiguration";
+inline constexpr const char* OpenAudioManagerWindow = "global.openAudioManager";
 inline constexpr const char* OpenHotkeySettings   = "global.openHotkeySettings";
 inline constexpr const char* SaveLayout           = "layouts.saveLayout";
 inline constexpr const char* OpenLayoutManager    = "layouts.openManager";

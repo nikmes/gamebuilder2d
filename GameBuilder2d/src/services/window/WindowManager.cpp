@@ -29,6 +29,7 @@
 #include "ui/Windows/GameWindow.h"
 #include "ui/Windows/HotkeysWindow.h"
 #include "ui/Windows/ConfigurationWindow.h"
+#include "ui/Windows/AudioManagerWindow.h"
 #include "services/hotkey/HotKeyManager.h"
 #include "services/hotkey/HotKeyActions.h"
 #include <string>
@@ -89,6 +90,14 @@ static void RegisterBuiltinWindows(WindowRegistry& reg) {
     };
     reg.registerType(std::move(configurationDesc));
 
+    WindowTypeDesc audioManagerDesc;
+    audioManagerDesc.typeId = "audio_manager";
+    audioManagerDesc.displayName = "Audio Manager";
+    audioManagerDesc.factory = [](WindowContext&) -> std::unique_ptr<IWindow> {
+        return std::make_unique<AudioManagerWindow>();
+    };
+    reg.registerType(std::move(audioManagerDesc));
+
     // General Game window (loads embedded games such as Space Invaders)
     WindowTypeDesc gameDesc;
     gameDesc.typeId = "game-window";
@@ -142,7 +151,12 @@ std::string WindowManager::createWindow(const std::string& title, std::optional<
     ManagedWindow w{};
     w.id = "win-" + std::to_string(next_id_++);
     w.title = title.empty() ? w.id : title;
-    if (initialSize.has_value()) w.minSize = initialSize;
+    if (initialSize.has_value() && initialSize->width > 0 && initialSize->height > 0) {
+        w.initialSize = initialSize;
+        w.minSize = initialSize;
+    } else {
+        w.initialSize = Size{512, 512};
+    }
     windows_.push_back(std::move(w));
     gb2d::logging::LogManager::debug("Created window: {} (title: {})", w.id, w.title);
     return w.id;
@@ -166,7 +180,12 @@ std::string WindowManager::spawnWindowByType(const std::string& typeId,
         std::string t = impl->title();
         w.title = t.empty() ? typeId : t;
     }
-    if (initialSize.has_value()) w.minSize = initialSize;
+    if (initialSize.has_value() && initialSize->width > 0 && initialSize->height > 0) {
+        w.initialSize = initialSize;
+        w.minSize = initialSize;
+    } else {
+        w.initialSize = Size{512, 512};
+    }
     w.impl = std::move(impl);
     windows_.push_back(std::move(w));
     return windows_.back().id;
@@ -533,7 +552,8 @@ void WindowManager::renderToasts() {
 }
 
 std::string WindowManager::makeLabel(const ManagedWindow& w) const {
-    return w.title + "###" + w.id; // keep visible title stable, ID after ###
+    std::string visibleTitle = w.title.empty() ? "Window" : w.title;
+    return visibleTitle + "###" + w.id; // keep visible title stable, ID after ###
 }
 
 void WindowManager::renderDockTargetsOverlay() {
@@ -644,6 +664,7 @@ void WindowManager::setEditorFullscreen(bool enable) {
 void WindowManager::openFileDialog(const char* dialogTitle, const char* filters) {
     IGFD::FileDialogConfig cfg;
     cfg.path = last_folder_.empty() ? std::string(".") : last_folder_;
+    cfg.flags = ImGuiFileDialogFlags_Modal;
     ImGuiFileDialog::Instance()->OpenDialog("FileOpenDlg", dialogTitle, filters, cfg);
 }
 
@@ -750,6 +771,10 @@ void WindowManager::processGlobalHotkeys() {
         spawnOrFocusWindow("configuration", "Configuration");
     }
 
+    if (HotKeyManager::consumeTriggered(OpenAudioManagerWindow)) {
+        spawnOrFocusWindow("audio_manager", "Audio Manager");
+    }
+
     if (HotKeyManager::consumeTriggered(OpenHotkeySettings)) {
         spawnOrFocusWindow("hotkeys", "Hotkeys");
     }
@@ -801,6 +826,7 @@ void WindowManager::renderUI() {
             auto launchFileDialog = [&](const char* dialogTitle, const char* filters) {
                 IGFD::FileDialogConfig cfg;
                 cfg.path = last_folder_.empty() ? std::string(".") : last_folder_;
+                cfg.flags = ImGuiFileDialogFlags_Modal;
                 ImGuiFileDialog::Instance()->OpenDialog("FileOpenDlg", dialogTitle, filters, cfg);
             };
 
@@ -968,6 +994,19 @@ void WindowManager::renderUI() {
                     focus_request_window_id_ = existing->id;
                 }
             }
+            const std::string audioManagerShortcut = hotkeyShortcutLabel(hotkeys::actions::OpenAudioManagerWindow);
+            if (ImGui::MenuItem("Audio Manager...", shortcutArg(audioManagerShortcut))) {
+                ManagedWindow* existing = findByTypeId("audio_manager");
+                if (!existing) {
+                    std::string id = spawnWindowByType("audio_manager", std::string("Audio Manager"));
+                    if (!id.empty()) {
+                        focus_request_window_id_ = id;
+                    }
+                } else {
+                    existing->open = true;
+                    focus_request_window_id_ = existing->id;
+                }
+            }
             ImGui::Separator();
             const std::string hotkeysShortcut = hotkeyShortcutLabel(hotkeys::actions::OpenHotkeySettings);
             if (ImGui::MenuItem("Hotkeys...", shortcutArg(hotkeysShortcut))) {
@@ -1088,6 +1127,15 @@ void WindowManager::renderUI() {
         }
         std::string label = makeLabel(w);
         bool open = w.open;
+
+        ImVec2 firstUseSize(512.0f, 512.0f);
+        if (w.initialSize.has_value()) {
+            const Size& size = *w.initialSize;
+            if (size.width > 0 && size.height > 0) {
+                firstUseSize = ImVec2(static_cast<float>(size.width), static_cast<float>(size.height));
+            }
+        }
+        ImGui::SetNextWindowSize(firstUseSize, ImGuiCond_FirstUseEver);
 
         WindowContext ctx{};
         const bool hasImpl = (w.impl != nullptr);
@@ -1225,7 +1273,7 @@ void WindowManager::renderUI() {
     }
 
     // File dialog rendering and result handling
-    if (ImGuiFileDialog::Instance()->Display("FileOpenDlg")) {
+    if (ImGuiFileDialog::Instance()->Display("FileOpenDlg", ImGuiWindowFlags_NoCollapse, ImVec2(600, 400), ImVec2(FLT_MAX, FLT_MAX))) {
         if (ImGuiFileDialog::Instance()->IsOk()) {
             auto filePathName = ImGuiFileDialog::Instance()->GetFilePathName();
             addToast(std::string("Opened: ") + filePathName);

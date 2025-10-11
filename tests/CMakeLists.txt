@@ -41,6 +41,7 @@ catch_discover_tests(config_tests)
 add_executable(window_tests
   test_bootstrap.cpp
   unit/windows/test_window_json_roundtrip.cpp
+  unit/windows/test_audio_manager_window.cpp
 )
 target_include_directories(window_tests PRIVATE
   ${CMAKE_SOURCE_DIR}/GameBuilder2d/src

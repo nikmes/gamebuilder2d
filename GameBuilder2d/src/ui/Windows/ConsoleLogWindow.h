@@ -59,6 +59,7 @@ private:
     bool search_case_sensitive_{false};
     bool search_selection_dirty_{false};
     bool search_last_case_sensitive_{false};
+    bool last_autoscroll_triggered_{false};
 
     // Helpers
     void initEditorIfNeeded();
