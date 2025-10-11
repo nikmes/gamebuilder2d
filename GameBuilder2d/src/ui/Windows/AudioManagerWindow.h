@@ -4,10 +4,13 @@
 #include "services/audio/AudioManager.h"
 
 #include <nlohmann/json.hpp>
+#include <functional>
 #include <vector>
 #include <string>
 
 namespace gb2d {
+
+class AudioManagerWindowTestAccess;
 
 class AudioManagerWindow : public IWindow, public audio::AudioEventSink {
 public:
@@ -33,13 +36,23 @@ private:
     void renderPreviewPanel();
     void renderConfigPanel();
     void renderDiagnosticsPanel();
+    void renderClosePromptModal();
+    void processPendingCloseAction();
     
     void refreshInventorySnapshots();
     void handleEvent(const audio::AudioEvent& event);
+    void refreshConfigState();
+    bool isConfigDirty() const;
+    bool hasConfigDraft() const;
+    bool applyConfigChanges();
+    void openClosePrompt();
+    void finalizeClose();
     
     void startSoundPreview(const std::string& key);
     void startMusicPreview(const std::string& key);
     void stopPreview();
+    void reportPreviewStatus(std::string message, bool isError);
+    void clearPreviewStatus();
 
     std::string title_{"Audio Manager"};
     
@@ -69,6 +82,32 @@ private:
     float previewPan_{0.5f};
     float previewPitch_{1.0f};
     audio::PlaybackHandle previewSoundHandle_{};
+    std::string previewStatusMessage_{};
+    bool previewStatusIsError_{false};
+
+    struct ConfigPanelState {
+        bool enabled{true};
+        float masterVolume{1.0f};
+        float musicVolume{1.0f};
+        float sfxVolume{1.0f};
+        int maxConcurrentSounds{16};
+        std::vector<std::string> searchPaths{};
+        std::string newSearchPath;
+    };
+
+    ConfigPanelState configBaseline_{};
+    ConfigPanelState configWorking_{};
+    std::string configStatusMessage_;
+    bool configStatusIsError_{false};
+
+    enum class ClosePrompt { None, UnsavedChanges };
+    enum class PendingCloseAction { None, ApplyAndClose, DiscardAndClose };
+
+    ClosePrompt closePrompt_{ClosePrompt::None};
+    PendingCloseAction pendingCloseAction_{PendingCloseAction::None};
+    std::function<void()> requestCloseCallback_{};
+
+    friend class AudioManagerWindowTestAccess;
 };
 
 } // namespace gb2d

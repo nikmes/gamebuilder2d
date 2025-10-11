@@ -96,9 +96,6 @@ int main()
     gb2d::FullscreenSession fullscreenSession{};
     wm.setFullscreenSession(&fullscreenSession);
 
-    // For testing: automatically open AudioManagerWindow
-    wm.spawnWindowByType("audio_manager");
-
     while (!WindowShouldClose())
     {
         float dt = GetFrameTime();

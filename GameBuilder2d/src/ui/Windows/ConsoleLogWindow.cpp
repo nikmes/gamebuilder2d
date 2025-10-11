@@ -5,6 +5,7 @@
 // imgui & editor
 #include <nlohmann/json.hpp>
 #include <imgui.h>
+#include <imgui_internal.h>
 // ImGuiColorTextEdit
 //#include <TextEditor.h> // already included by header
 // std helpers
@@ -177,6 +178,7 @@ void ConsoleLogWindow::applyPalette() {
 }
 
 void ConsoleLogWindow::rebuildEditorIfNeeded() {
+    last_autoscroll_triggered_ = false;
     // Snapshot current log lines (bounded by max_lines_)
     auto lines = gb2d::logging::read_log_lines_snapshot((size_t)max_lines_);
     size_t snapshotSize = lines.size();
@@ -291,6 +293,7 @@ void ConsoleLogWindow::rebuildEditorIfNeeded() {
             TextEditor::Coordinates c{ (int)totalLines - 1, 0 };
             editor_.SetCursorPosition(c);
         }
+        last_autoscroll_triggered_ = true;
     }
     last_snapshot_size_ = snapshotSize;
     last_hash_ = h;
@@ -311,6 +314,10 @@ void ConsoleLogWindow::rebuildEditorIfNeeded() {
 void ConsoleLogWindow::render(WindowContext& /*ctx*/) {
     initEditorIfNeeded();
     font_scale_ = std::clamp(font_scale_, kConsoleFontScaleMin, kConsoleFontScaleMax);
+
+    ImGuiContext* imguiCtx = ImGui::GetCurrentContext();
+    ImGuiWindow* previousFocusWindow = imguiCtx ? imguiCtx->NavWindow : nullptr;
+    const bool windowWasFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
 
     // Settings / controls row
     ImGui::SetNextItemWidth(120);
@@ -481,7 +488,9 @@ void ConsoleLogWindow::render(WindowContext& /*ctx*/) {
     constexpr ImGuiWindowFlags editorFlags = ImGuiWindowFlags_HorizontalScrollbar |
                                             ImGuiWindowFlags_AlwaysHorizontalScrollbar |
                                             ImGuiWindowFlags_NoMove;
+    ImGuiWindow* consoleChildWindow = nullptr;
     if (ImGui::BeginChild("##console_log_editor", ImVec2(0, 0), false, editorFlags)) {
+        consoleChildWindow = ImGui::GetCurrentWindow();
         if (font_scale_ != 1.0f) {
             ImGui::SetWindowFontScale(font_scale_);
         }
@@ -491,6 +500,14 @@ void ConsoleLogWindow::render(WindowContext& /*ctx*/) {
         }
     }
     ImGui::EndChild();
+
+    if (last_autoscroll_triggered_ && !windowWasFocused && imguiCtx && consoleChildWindow) {
+        ImGuiWindow* currentNav = imguiCtx->NavWindow;
+        if (currentNav == consoleChildWindow && previousFocusWindow && previousFocusWindow != consoleChildWindow) {
+            ImGui::FocusWindow(previousFocusWindow);
+        }
+    }
+    last_autoscroll_triggered_ = false;
 }
 
 void ConsoleLogWindow::serialize(nlohmann::json& out) const {

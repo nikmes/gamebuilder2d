@@ -41,13 +41,12 @@
   - ✓ Music preview supports play/stop, pause/resume, and volume adjustments
   - ✓ Added progress/time display for music preview with live updates
   - ✓ Highlight paused state and cleanly reset UI when playback completes
-- [ ] T209 — Integrate config editing for audio settings
-  - ⚠ Config panel placeholder created but empty
-  - Need: Display current audio config (master/music/sfx volumes, device status)
-  - Need: Editable controls for volume sliders
-  - Need: Search paths editor
-  - Need: Max concurrent sounds setting
-  - Need: Apply/Revert buttons
+- [x] T209 — Integrate config editing for audio settings
+  - ✓ Config tab shows live device status and configuration values
+  - ✓ Volume sliders, enable toggle, and max sound slots are fully editable
+  - ✓ Search path list editor with add/remove controls implemented
+  - ✓ Apply button persists via ConfigurationManager, reinitializes AudioManager, and reloads assets
+  - ✓ Revert button restores last applied settings and clears in-progress edits
 - [x] T210 — Display diagnostics and event log
   - ✓ Diagnostics panel shows metrics (initialized, device ready, silent mode, counts)
   - ✓ Event log with clear button and automatic size limiting (max 100 entries)
@@ -55,16 +54,16 @@
   - ✓ Shows key and details for each event
 
 ## State & Persistence
-- [ ] T211 — Handle dirty state and apply/save for config
-  - Need: Track config changes (dirty flag)
-  - Need: Apply changes to AudioManager
-  - Need: Persist changes to config.json via ConfigurationManager
-  - Need: Revert/cancel mechanism
-- [ ] T212 — Manage preview cleanup and resource handling
+- [x] T211 — Handle dirty state and apply/save for config
+  - ✓ Dirty state highlighted in UI with tab badge and warning banner
+  - ✓ Apply flow persists via ConfigurationManager and reinitializes AudioManager
+  - ✓ Discard flow restores baseline and modal guards prevent accidental close
+  - ✓ Close prompt enforces apply/discard decisions before window shuts
+- [x] T212 — Manage preview cleanup and resource handling
   - ✓ Stop preview when switching assets or starting a new one
   - ✓ Stop preview in destructor to avoid leaking playback
   - ✓ Clear playback handle/state on stop and audio events
-  - ⚠ Handle device-not-ready / silent-mode fallbacks and error UI messaging
+  - ✓ Handle device-not-ready / silent-mode fallbacks and error UI messaging
 
 ## Testing & QA
 - [ ] T213 — Unit tests for UI components and API integration
@@ -96,26 +95,18 @@
 
 ### **Immediate Next Steps (High Priority):**
 
-1. **T209 — Config Panel**
-   - Display current AudioConfig values
-   - Add sliders for master/music/sfx volumes
-   - Add controls for max concurrent sounds
-   - Implement Apply/Revert buttons
-   - Wire up to ConfigurationManager for persistence
-
-2. **T212 — Preview Cleanup**
+1. **T212 — Preview Cleanup**
   - Gracefully handle device-not-ready or silent-mode scenarios
   - Add user feedback when preview fails to start or is auto-stopped
 
-3. **T211 — Config Dirty State**
+2. **T211 — Config Dirty State**
   - Track edits in the Config tab with a dirty flag
   - Persist confirmed changes to config.json via ConfigurationManager
   - Provide revert/cancel flow for in-progress edits
 
 ### **Follow-up Tasks (Medium Priority):**
-4. T211 — Config dirty state and persistence
-5. T213 — Unit tests for event handling
-6. T214 — Integration tests with real audio
+3. T213 — Unit tests for event handling
+4. T214 — Integration tests with real audio
 
 ### **Polish & Documentation (Lower Priority):**
 7. T215 — Extended manual QA

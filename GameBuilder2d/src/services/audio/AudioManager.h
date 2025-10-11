@@ -163,6 +163,7 @@ public:
     static std::vector<MusicInventoryRecord> captureMusicInventorySnapshot();
     static AudioEventSubscription subscribeToAudioEvents(AudioEventSink* sink);
     static bool unsubscribeFromAudioEvents(AudioEventSubscription& subscription);
+    static std::size_t activeSubscriptionCountForTesting();
 
     struct Backend {
         virtual ~Backend() = default;

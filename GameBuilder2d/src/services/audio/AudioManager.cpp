@@ -1321,6 +1321,13 @@ bool AudioManager::unsubscribeFromAudioEvents(AudioEventSubscription& subscripti
     return false;
 }
 
+std::size_t AudioManager::activeSubscriptionCountForTesting() {
+    auto& st = state();
+    std::scoped_lock lock(st.mutex);
+    return std::count_if(st.eventSubscriptions.begin(), st.eventSubscriptions.end(),
+                         [](const AudioEventSubscription& sub) { return sub.active && sub.sink != nullptr; });
+}
+
 void AudioManager::setBackendForTesting(Backend* backendInstance) {
     auto& st = state();
     std::scoped_lock lock(st.mutex);
