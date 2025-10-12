@@ -31,6 +31,7 @@ Texture lookups honour the configuration service. Keys live under the `textures:
 | `textures::search_paths` | string list | `["assets/textures"]` | Directories scanned to resolve relative texture identifiers. |
 | `textures::default_filter` | string | `"bilinear"` | Raylib filter applied after load (`nearest`, `bilinear`, `trilinear`, `anisotropic`). |
 | `textures::generate_mipmaps` | bool | `false` | If `true`, `GenTextureMipmaps` runs on load. |
+| `textures::log_atlas_contents` | bool | `false` | When enabled, newly loaded atlases emit per-frame debug logs. |
 | `textures::max_bytes` | int | `0` | Optional VRAM budget in bytes; exceeding it triggers a warning. |
 | `textures::placeholder_path` | string | `""` | Optional custom placeholder asset. Falls back to a magenta/black checkerboard when empty or invalid. |
 
@@ -83,6 +84,38 @@ struct EnemySprite {
 
 Call `TextureManager::release` once per successful `acquire`. The manager decrements a reference count and unloads the GPU handle when it reaches zero.
 
+## Working with Texture Atlases *(in progress feature)*
+
+Texture atlases package multiple sprites into a single GPU texture plus a JSON manifest (`TexturePacker` format). The upcoming API lets you load both pieces together while sharing the same cache and reference rules as standalone textures.
+
+```cpp
+using gb2d::textures::TextureAtlasHandle;
+
+TextureAtlasHandle toolbar = TextureManager::acquireAtlas("assets/textures/atlases/toolbaricons.json");
+if (toolbar.placeholder) {
+    // Atlas JSON or PNG failed to load – placeholder texture returned and frame list is empty.
+}
+
+const std::optional<gb2d::textures::AtlasFrame> frame = TextureManager::getAtlasFrame(toolbar.key, "zoom-in.png");
+if (frame) {
+    DrawTextureRec(*toolbar.texture, frame->frame, {x, y}, WHITE);
+}
+
+// Later, when done:
+TextureManager::releaseAtlas(toolbar.key);
+```
+
+Lifetime rules mirror single-texture usage:
+
+- The returned `TextureAtlasHandle::texture` pointer stays valid until every caller releases the atlas key.
+- `TextureAtlasHandle::frames` is a non-owning view; do not store the span directly beyond the scope where you hold the handle. Cache frame names/rectangles if you need long-term data.
+- `releaseAtlas` must be called exactly once per successful `acquireAtlas` (or `acquireAtlasFromTexture`). This decrements the shared reference counter and eventually unloads the underlying GPU texture when it reaches zero.
+- `acquireAtlasFromTexture` lets tooling bolt a JSON manifest onto an already-loaded texture entry, reusing the same canonical key.
+
+Atlases that fail to load fall back to the global placeholder texture. In that scenario, `frames` is empty and `placeholder` is `true`; callers should guard accordingly.
+
+When troubleshooting atlas metadata, enable the `textures::log_atlas_contents` flag (and set the log level to debug) to dump every parsed frame to the console/log viewer.
+
 ## Placeholder, Errors & Logging
 
 When a file cannot be found or decoded, the manager logs a warning via `LogManager` and returns the placeholder texture. The `AcquireResult::placeholder` flag helps UI call sites set expectations (e.g., tooltips). Placeholders participate in reference counting like any other texture; releasing the key is still required.
@@ -93,8 +126,13 @@ Query cache health at runtime:
 
 ```cpp
 const auto metrics = TextureManager::metrics();
-LOG_INFO("Loaded textures: {} ({} placeholders) – ~{} bytes", metrics.totalTextures,
-         metrics.placeholderTextures, metrics.totalBytes);
+LOG_INFO("Textures: {} ({} placeholders) Atlases: {} ({} placeholders, {} frames) ~{} bytes",
+         metrics.totalTextures,
+         metrics.placeholderTextures,
+         metrics.totalAtlases,
+         metrics.placeholderAtlases,
+         metrics.totalAtlasFrames,
+         metrics.totalBytes);
 ```
 
 This is ideal for diagnostics overlays or debug consoles. When `textures::max_bytes` is non-zero, the manager logs an extra warning the first time the budget is exceeded.
@@ -117,6 +155,7 @@ The following improvements are tracked for later iterations:
 - Hot-reload hooks (filesystem watchers) to auto-refresh assets in place.
 - LRU or time-based eviction to keep the cache within memory budgets.
 - Optional on-disk compression / streaming for large texture sets.
+- Trimmed/rotated atlas frame support (currently logs a warning and uses the supplied rectangle).
 
 Keep these ideas in mind when evolving the service or planning next milestones.
 

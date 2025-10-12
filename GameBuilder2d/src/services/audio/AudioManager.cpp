@@ -397,41 +397,31 @@ void stopMusicRecord(const AudioManager::RaylibHooks& api, MusicRecord& record) 
 
 Settings loadSettings() {
     Settings s;
-    const bool legacyEnabled = ConfigurationManager::getBool("audio::enabled", true);
-    s.enabled = ConfigurationManager::getBool("audio::core::enabled", legacyEnabled);
+    s.enabled = ConfigurationManager::getBool("audio.core.enabled", true);
 
-    const bool legacyDiagnostics = ConfigurationManager::getBool("audio::diagnostics_logging", true);
-    s.diagnosticsLoggingEnabled = ConfigurationManager::getBool("audio::core::diagnostics_logging", legacyDiagnostics);
+    s.diagnosticsLoggingEnabled = ConfigurationManager::getBool("audio.core.diagnostics_logging", true);
 
-    const double legacyMaster = ConfigurationManager::getDouble("audio::master_volume", 1.0);
-    s.masterVolume = std::clamp(ConfigurationManager::getDouble("audio::volumes::master", legacyMaster), 0.0, 1.0);
+    s.masterVolume = std::clamp(ConfigurationManager::getDouble("audio.volumes.master", 1.0), 0.0, 1.0);
 
-    const double legacyMusic = ConfigurationManager::getDouble("audio::music_volume", 1.0);
-    s.musicVolume = std::clamp(ConfigurationManager::getDouble("audio::volumes::music", legacyMusic), 0.0, 1.0);
+    s.musicVolume = std::clamp(ConfigurationManager::getDouble("audio.volumes.music", 1.0), 0.0, 1.0);
 
-    const double legacySfx = ConfigurationManager::getDouble("audio::sfx_volume", 1.0);
-    s.sfxVolume = std::clamp(ConfigurationManager::getDouble("audio::volumes::sfx", legacySfx), 0.0, 1.0);
+    s.sfxVolume = std::clamp(ConfigurationManager::getDouble("audio.volumes.sfx", 1.0), 0.0, 1.0);
 
-    const int legacyMaxSlots = ConfigurationManager::getInt("audio::max_concurrent_sounds", 16);
-    auto maxSlots = ConfigurationManager::getInt("audio::engine::max_concurrent_sounds", legacyMaxSlots);
+    auto maxSlots = ConfigurationManager::getInt("audio.engine.max_concurrent_sounds", 16);
     if (maxSlots < 0) maxSlots = 0;
     s.maxConcurrentSounds = static_cast<std::size_t>(maxSlots);
 
-    auto legacyPaths = ConfigurationManager::getStringList("audio::search_paths", {"assets/audio"});
-    auto paths = ConfigurationManager::getStringList("audio::engine::search_paths", legacyPaths);
+    auto paths = ConfigurationManager::getStringList("audio.engine.search_paths", {"assets/audio"});
     s.searchPaths.reserve(paths.size());
     for (const auto& p : paths) {
         s.searchPaths.emplace_back(p);
     }
 
-    auto legacyPreloadSounds = ConfigurationManager::getStringList("audio::preload_sounds", {});
-    s.preloadSounds = ConfigurationManager::getStringList("audio::preload::sounds", legacyPreloadSounds);
+    s.preloadSounds = ConfigurationManager::getStringList("audio.preload.sounds", {});
 
-    auto legacyPreloadMusic = ConfigurationManager::getStringList("audio::preload_music", {});
-    s.preloadMusic = ConfigurationManager::getStringList("audio::preload::music", legacyPreloadMusic);
+    s.preloadMusic = ConfigurationManager::getStringList("audio.preload.music", {});
 
-    auto legacySoundAliasMap = ConfigurationManager::getStringMap("audio::sound_aliases", {});
-    auto soundAliasMap = ConfigurationManager::getStringMap("audio::preload::sound_aliases", legacySoundAliasMap);
+    auto soundAliasMap = ConfigurationManager::getStringMap("audio.preload.sound_aliases", {});
     for (const auto& [rawKey, rawAlias] : soundAliasMap) {
         std::string canonical = canonicalizeConfigIdentifier(rawKey);
         std::string trimmedAlias = trimCopy(rawAlias);
@@ -439,8 +429,7 @@ Settings loadSettings() {
             s.preloadSoundAliases[canonical] = trimmedAlias;
         }
     }
-    auto legacyMusicAliasMap = ConfigurationManager::getStringMap("audio::music_aliases", {});
-    auto musicAliasMap = ConfigurationManager::getStringMap("audio::preload::music_aliases", legacyMusicAliasMap);
+    auto musicAliasMap = ConfigurationManager::getStringMap("audio.preload.music_aliases", {});
     for (const auto& [rawKey, rawAlias] : musicAliasMap) {
         std::string canonical = canonicalizeConfigIdentifier(rawKey);
         std::string trimmedAlias = trimCopy(rawAlias);

@@ -286,7 +286,7 @@ add_library(gb2d_texture
 )
 target_include_directories(gb2d_texture PUBLIC "src")
 set_property(TARGET gb2d_texture PROPERTY CXX_STANDARD 20)
-target_link_libraries(gb2d_texture PUBLIC raylib gb2d_configuration gb2d_logging)
+target_link_libraries(gb2d_texture PUBLIC raylib gb2d_configuration gb2d_logging nlohmann_json::nlohmann_json)
 
 # Audio service library
 add_library(gb2d_audio

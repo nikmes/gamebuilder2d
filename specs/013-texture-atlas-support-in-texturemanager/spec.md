@@ -36,10 +36,11 @@ As a GameBuilder2d developer, I can request a texture atlas by logical key and r
 
 ### Edge Cases & Decisions
 - Atlas JSON is assumed to live alongside the PNG (same directory); alternate layouts become a configuration extension.
-- Frame rectangles are stored in pixel-space `Rectangle` structs derived from the JSON `frame` fields.
+- Frame rectangles are stored in pixel-space `Rectangle` structs derived from the JSON `frame` fields and exposed through lightweight views that avoid copying data per lookup.
 - Duplicate frame names resolve deterministically to the first encountered entry and emit a warning.
 - Atlases share the existing reference-count and placeholder policies; releasing the atlas decrements the underlying texture record.
-- [NEEDS CLARIFICATION] How to handle trimmed/rotated frames if future atlases include those flags (current sample has none).
+- Trimmed or rotated frames are not supported in the initial release; when detected, the loader logs a warning and falls back to the provided frame rectangle while recording a backlog item for full support.
+- Atlas identifiers reuse the texture canonicalization rules (lowercase + forward slashes); frame keys are normalized to lowercase while preserving the original name for diagnostics so editor and runtime code share stable lookups.
 
 ---
 
@@ -70,9 +71,9 @@ As a GameBuilder2d developer, I can request a texture atlas by logical key and r
 
 ## Key Entities & Data
 - **AtlasKey**: Canonical string key (path or alias) mapping to both texture and metadata.
-- **TextureAtlasRecord**: Manager-side record bundling the shared texture key, reference counter, frame map, optional metadata (size, hash), and error state.
+- **TextureAtlasRecord**: Manager-side record bundling the shared texture key, reference counter, canonical frame map (lowercase keys, original names retained for logs), optional metadata (size, hash), and error state.
 - **AtlasFrame**: Structure containing frame rectangle in pixels, original source size, pivot, rotation flags, and trimming info.
-- **AtlasHandle**: Returned to callers; wraps atlas key, texture pointer, `std::span`/view of frames, and flags (`newlyLoaded`, `placeholder`).
+- **TextureAtlasHandle**: Returned to callers; provides the atlas key, pointer to the shared texture, a boolean for placeholder/newlyLoaded status, and a view exposing frame lookup by name without additional ownership requirements.
 - **AtlasMetrics**: Extension to existing metrics reporting counts and memory for atlases vs. standalone textures.
 
 ---
@@ -90,7 +91,7 @@ As a GameBuilder2d developer, I can request a texture atlas by logical key and r
 - [x] Functional/non-functional requirements drafted and testable
 - [x] Entities and data modeled
 - [x] Risks documented with mitigations
-- [ ] [NEEDS CLARIFICATION] items resolved
+- [x] Clarification items resolved or deferred with documented policy
 
 ---
 

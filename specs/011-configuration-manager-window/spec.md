@@ -87,7 +87,7 @@ As a GameBuilder2d user, I can open a Configuration window that presents setting
 - **fullscreen** — `width`, `height`, `game_width`, `game_height`. Currently undocumented; specify that `game_*` controls render target size for fullscreen sessions while `width/height` drive monitor selection.
 - **ui** — `theme` enum (`dark`, `light` future). Mentioned implicitly; document available values and future extension path.
 - **textures** — `search_paths`, `default_filter`, `generate_mipmaps`, `max_bytes`, `placeholder_path`. Developer guide covers most, but `max_bytes`/`placeholder_path` need explicit descriptions in user docs.
-- **audio** — `enabled`, `master_volume`, `music_volume`, `sfx_volume`, `max_concurrent_sounds`, `search_paths`, `preload_sounds`, `preload_music`. README highlights volumes/search paths; add doc blurbs for `preload_*` arrays and concurrency limits.
+- **audio** — `core.enabled`, `core.diagnostics_logging`, `volumes.master`, `volumes.music`, `volumes.sfx`, `engine.max_concurrent_sounds`, `engine.search_paths`, `preload.sounds`, `preload.music`, alias maps. README highlights volumes/search paths; add doc blurbs for preload arrays and concurrency limits.
 - **input.hotkeys** — fully covered by HotKeyManager docs; ensure Configuration window links to that guide for advanced editing.
 - **version** — internal integer used for migration. Should remain hidden/readonly in UI with tooltip explaining purpose.
 - **Future/unknown keys** — emphasize that the Configuration window must surface unrecognized keys in a "Misc"/JSON editor to preserve customizations (ties to FR-010).

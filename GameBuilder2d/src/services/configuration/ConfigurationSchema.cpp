@@ -203,11 +203,12 @@ ConfigurationSchema ConfigurationSchemaBuilder::build() && noexcept {
 }
 
 const ConfigSectionDesc* ConfigurationSchema::findSection(std::string_view id) const noexcept {
+    const std::string key(id);
     for (const auto& section : sections) {
-        if (section.id == id) {
+        if (section.id == key) {
             return &section;
         }
-        if (const auto* found = findSectionRecursive(section, id)) {
+        if (const auto* found = findSectionRecursive(section, key)) {
             return found;
         }
     }
@@ -227,8 +228,9 @@ const ConfigSectionDesc* ConfigurationSchema::findSectionRecursive(const ConfigS
 }
 
 const ConfigFieldDesc* ConfigurationSchema::findField(std::string_view id) const noexcept {
+    const std::string key(id);
     for (const auto& section : sections) {
-        if (const auto* field = findFieldRecursive(section, id)) {
+        if (const auto* field = findFieldRecursive(section, key)) {
             return field;
         }
     }

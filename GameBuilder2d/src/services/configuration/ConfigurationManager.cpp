@@ -195,6 +195,12 @@ json buildHotkeyDefaultsArray() {
 					.defaultBool(false)
 					.advanced();
 			});
+			section.field("textures.log_atlas_contents", ConfigFieldType::Boolean, [](ConfigFieldBuilder& field) {
+				field.label("Log Atlas Contents")
+					.description("Emit per-frame debug dumps when atlases load. Useful for troubleshooting JSON issues.")
+					.defaultBool(false)
+					.advanced();
+			});
 			section.field("textures.max_bytes", ConfigFieldType::Integer, [](ConfigFieldBuilder& field) {
 				field.label("Memory Budget (bytes)")
 					.description("Optional soft cap for texture memory. 0 disables the limit.")
@@ -410,41 +416,6 @@ json buildHotkeyDefaultsArray() {
 		return s.size() >= pfx.size() && 0 == s.compare(0, pfx.size(), pfx);
 	}
 
-	void migrate_legacy_audio(json& root) {
-		if (!root.is_object()) {
-			return;
-		}
-
-		json& audioSection = ensure_json_path(root, "audio");
-		if (!audioSection.is_object()) {
-			audioSection = json::object();
-		}
-
-		auto move_if_absent = [&](const char* legacyKey, const char* newPath) {
-			auto it = audioSection.find(legacyKey);
-			if (it == audioSection.end()) {
-				return;
-			}
-			const json* existing = get_by_path(root, newPath);
-			if (!existing || existing->is_null()) {
-				ensure_json_path(root, newPath) = *it;
-			}
-			audioSection.erase(it);
-		};
-
-		move_if_absent("enabled", "audio.core.enabled");
-		move_if_absent("diagnostics_logging", "audio.core.diagnostics_logging");
-		move_if_absent("master_volume", "audio.volumes.master");
-		move_if_absent("music_volume", "audio.volumes.music");
-		move_if_absent("sfx_volume", "audio.volumes.sfx");
-		move_if_absent("max_concurrent_sounds", "audio.engine.max_concurrent_sounds");
-		move_if_absent("search_paths", "audio.engine.search_paths");
-		move_if_absent("preload_sounds", "audio.preload.sounds");
-		move_if_absent("preload_music", "audio.preload.music");
-		move_if_absent("sound_aliases", "audio.preload.sound_aliases");
-		move_if_absent("music_aliases", "audio.preload.music_aliases");
-	}
-
 	void ensure_audio_structure(json& root) {
 		json& audio = ensure_json_path(root, "audio");
 		if (!audio.is_object()) {
@@ -509,20 +480,6 @@ json buildHotkeyDefaultsArray() {
 			musicAliases = json::object();
 		}
 	}
-	std::string normalize_key(std::string key) {
-		if (key.find("::") == std::string::npos) return key;
-		std::string out; out.reserve(key.size());
-		for (size_t i = 0; i < key.size(); ++i) {
-			if (key[i] == ':' && i + 1 < key.size() && key[i + 1] == ':') {
-				out.push_back('.');
-				++i; // skip the second ':'
-			} else {
-				out.push_back(key[i]);
-			}
-		}
-		return out;
-	}
-
 	std::string enum_values_hint(const ConfigFieldDesc& desc) {
 		if (desc.validation.enumValues.empty()) {
 			return {};
@@ -930,6 +887,7 @@ void ConfigurationManager::loadOrDefault() {
 	textureSearch.push_back("assets/textures");
 	ensure_json_path(c, "textures.default_filter") = "bilinear";
 	ensure_json_path(c, "textures.generate_mipmaps") = false;
+	ensure_json_path(c, "textures.log_atlas_contents") = false;
 	ensure_json_path(c, "textures.max_bytes") = 0;
 	ensure_json_path(c, "textures.placeholder_path") = "";
 	auto& audioCore = ensure_json_path(c, "audio.core");
@@ -987,12 +945,10 @@ bool ConfigurationManager::load() {
 	}
 	(void)fromVer; // suppress unused if no logging
 	cfg() = std::move(*j);
-	migrate_legacy_audio(cfg());
 	ensure_audio_structure(cfg());
 	ensureHotkeyDefaults(cfg(), false);
 	size_t overrides2 = apply_env_overrides(cfg());
 	(void)overrides2;
-	migrate_legacy_audio(cfg());
 	ensure_audio_structure(cfg());
 
 	// Notify reload hooks
@@ -1046,6 +1002,7 @@ bool ConfigurationManager::applyRuntime(const json& document) {
 	(void)overrides;
 
 	cfg() = std::move(next);
+	ensure_audio_structure(cfg());
 
 	for (const auto& hook : reload_hooks()) {
 		if (hook.callback) {
@@ -1057,31 +1014,31 @@ bool ConfigurationManager::applyRuntime(const json& document) {
 }
 
 bool ConfigurationManager::getBool(const std::string& key, bool defaultValue) {
-	const json* v = get_by_path(cfg(), normalize_key(key));
+	const json* v = get_by_path(cfg(), key);
 	if (v && v->is_boolean()) return v->get<bool>();
 	return defaultValue;
 }
 
 int64_t ConfigurationManager::getInt(const std::string& key, int64_t defaultValue) {
-	const json* v = get_by_path(cfg(), normalize_key(key));
+	const json* v = get_by_path(cfg(), key);
 	if (v && (v->is_number_integer() || v->is_number_unsigned())) return v->get<int64_t>();
 	return defaultValue;
 }
 
 double ConfigurationManager::getDouble(const std::string& key, double defaultValue) {
-	const json* v = get_by_path(cfg(), normalize_key(key));
+	const json* v = get_by_path(cfg(), key);
 	if (v && v->is_number()) return v->get<double>();
 	return defaultValue;
 }
 
 std::string ConfigurationManager::getString(const std::string& key, const std::string& defaultValue) {
-	const json* v = get_by_path(cfg(), normalize_key(key));
+	const json* v = get_by_path(cfg(), key);
 	if (v && v->is_string()) return v->get<std::string>();
 	return defaultValue;
 }
 
 std::vector<std::string> ConfigurationManager::getStringList(const std::string& key, const std::vector<std::string>& defaultValue) {
-	const json* v = get_by_path(cfg(), normalize_key(key));
+	const json* v = get_by_path(cfg(), key);
 	if (v && v->is_array()) {
 		std::vector<std::string> out;
 		out.reserve(v->size());
@@ -1096,7 +1053,7 @@ std::vector<std::string> ConfigurationManager::getStringList(const std::string& 
 std::unordered_map<std::string, std::string> ConfigurationManager::getStringMap(
 	const std::string& key,
 	const std::unordered_map<std::string, std::string>& defaultValue) {
-	const json* v = get_by_path(cfg(), normalize_key(key));
+	const json* v = get_by_path(cfg(), key);
 	if (v && v->is_object()) {
 		std::unordered_map<std::string, std::string> out;
 		out.reserve(v->size());
@@ -1110,18 +1067,18 @@ std::unordered_map<std::string, std::string> ConfigurationManager::getStringMap(
 	return defaultValue;
 }
 
-void ConfigurationManager::set(const std::string& key, bool value) { ensure_json_path(cfg(), normalize_key(key)) = value; }
-void ConfigurationManager::set(const std::string& key, int64_t value) { ensure_json_path(cfg(), normalize_key(key)) = value; }
-void ConfigurationManager::set(const std::string& key, double value) { ensure_json_path(cfg(), normalize_key(key)) = value; }
-void ConfigurationManager::set(const std::string& key, const std::string& value) { ensure_json_path(cfg(), normalize_key(key)) = value; }
+void ConfigurationManager::set(const std::string& key, bool value) { ensure_json_path(cfg(), key) = value; }
+void ConfigurationManager::set(const std::string& key, int64_t value) { ensure_json_path(cfg(), key) = value; }
+void ConfigurationManager::set(const std::string& key, double value) { ensure_json_path(cfg(), key) = value; }
+void ConfigurationManager::set(const std::string& key, const std::string& value) { ensure_json_path(cfg(), key) = value; }
 void ConfigurationManager::set(const std::string& key, const std::vector<std::string>& value) {
 	json arr = json::array();
 	for (const auto& s : value) arr.push_back(s);
-	ensure_json_path(cfg(), normalize_key(key)) = std::move(arr);
+	ensure_json_path(cfg(), key) = std::move(arr);
 }
 
 void ConfigurationManager::setJson(const std::string& key, const json& value) {
-	ensure_json_path(cfg(), normalize_key(key)) = value;
+	ensure_json_path(cfg(), key) = value;
 }
 
 int ConfigurationManager::subscribeOnChange(const std::function<void()>& cb) {
@@ -1177,7 +1134,8 @@ ConfigValue ConfigurationManager::valueFor(std::string_view id, ConfigValue fall
 	if (!desc) {
 		return fallback;
 	}
-	if (const json* v = get_by_path(cfg(), std::string(id)); v) {
+	const std::string key(id);
+	if (const json* v = get_by_path(cfg(), key); v) {
 		switch (desc->type) {
 		case ConfigFieldType::Boolean:
 			if (v->is_boolean()) return v->get<bool>();

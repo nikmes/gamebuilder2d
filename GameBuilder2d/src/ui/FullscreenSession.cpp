@@ -43,8 +43,8 @@ void FullscreenSession::requestStart(games::Game& game, const std::string& gameI
         return value;
     };
 
-    int desiredWidth = resolveDimension("fullscreen::game_width", "window::width", "fullscreen::width", fallbackWidth);
-    int desiredHeight = resolveDimension("fullscreen::game_height", "window::height", "fullscreen::height", fallbackHeight);
+    int desiredWidth = resolveDimension("fullscreen.game_width", "window.width", "fullscreen.width", fallbackWidth);
+    int desiredHeight = resolveDimension("fullscreen.game_height", "window.height", "fullscreen.height", fallbackHeight);
 
     desiredWidth = std::max(desiredWidth, 320);
     desiredHeight = std::max(desiredHeight, 240);
@@ -52,10 +52,10 @@ void FullscreenSession::requestStart(games::Game& game, const std::string& gameI
     gb2d::logging::LogManager::debug("FullscreenSession target resolution {}x{} (window={}x{}, fullscreen={}x{})",
                                      desiredWidth,
                                      desiredHeight,
-                                     ConfigurationManager::getInt("window::width", fallbackWidth),
-                                     ConfigurationManager::getInt("window::height", fallbackHeight),
-                                     ConfigurationManager::getInt("fullscreen::width", fallbackWidth),
-                                     ConfigurationManager::getInt("fullscreen::height", fallbackHeight));
+                                     ConfigurationManager::getInt("window.width", fallbackWidth),
+                                     ConfigurationManager::getInt("window.height", fallbackHeight),
+                                     ConfigurationManager::getInt("fullscreen.width", fallbackWidth),
+                                     ConfigurationManager::getInt("fullscreen.height", fallbackHeight));
 
     if (!previousFullscreen_) {
         ToggleFullscreen();

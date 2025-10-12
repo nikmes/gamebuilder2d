@@ -54,6 +54,56 @@ const char* shortcutArg(const std::string& value) {
     return value.empty() ? nullptr : value.c_str();
 }
 
+bool looksLikeTextureAtlasJson(const std::string& filePath) {
+    std::ifstream stream(filePath);
+    if (!stream.is_open()) {
+        return false;
+    }
+
+    nlohmann::json document = nlohmann::json::parse(stream, nullptr, false);
+    if (document.is_discarded() || !document.is_object()) {
+        return false;
+    }
+
+    auto framesIt = document.find("frames");
+    if (framesIt == document.end()) {
+        return false;
+    }
+
+    auto hasFrameObject = [](const nlohmann::json& node) {
+        if (!node.is_object()) {
+            return false;
+        }
+        auto frameIt = node.find("frame");
+        if (frameIt == node.end() || !frameIt->is_object()) {
+            return false;
+        }
+        const auto& frameObj = *frameIt;
+        return frameObj.contains("x") && frameObj.contains("y") &&
+               (frameObj.contains("w") || frameObj.contains("width")) &&
+               (frameObj.contains("h") || frameObj.contains("height"));
+    };
+
+    if (framesIt->is_array()) {
+        for (const auto& entry : *framesIt) {
+            if (hasFrameObject(entry)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    if (framesIt->is_object()) {
+        for (const auto& item : framesIt->items()) {
+            if (hasFrameObject(item.value())) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 } // namespace
 
 static void RegisterBuiltinWindows(WindowRegistry& reg) {
@@ -119,8 +169,8 @@ static void RegisterBuiltinWindows(WindowRegistry& reg) {
 WindowManager::WindowManager() {
     // Initialize window registry (no behavior change yet)
     RegisterBuiltinWindows(window_registry_);
-    editor_window_restore_width_ = std::max(320, static_cast<int>(ConfigurationManager::getInt("window::width", 1280)));
-    editor_window_restore_height_ = std::max(240, static_cast<int>(ConfigurationManager::getInt("window::height", 720)));
+    editor_window_restore_width_ = std::max(320, static_cast<int>(ConfigurationManager::getInt("window.width", 1280)));
+    editor_window_restore_height_ = std::max(240, static_cast<int>(ConfigurationManager::getInt("window.height", 720)));
     // Try auto-load last layout if ImGui context is alive
     if (ImGui::GetCurrentContext() != nullptr) {
         loadLayout("last");
@@ -607,14 +657,14 @@ void WindowManager::setEditorFullscreen(bool enable) {
         if (!currentlyFullscreen) {
             editor_window_restore_width_ = std::max(GetScreenWidth(), 320);
             editor_window_restore_height_ = std::max(GetScreenHeight(), 240);
-            ConfigurationManager::set("window::width", static_cast<int64_t>(editor_window_restore_width_));
-            ConfigurationManager::set("window::height", static_cast<int64_t>(editor_window_restore_height_));
+            ConfigurationManager::set("window.width", static_cast<int64_t>(editor_window_restore_width_));
+            ConfigurationManager::set("window.height", static_cast<int64_t>(editor_window_restore_height_));
             ToggleFullscreen();
             currentlyFullscreen = IsWindowFullscreen();
         } else {
             if (editor_window_restore_width_ <= 0 || editor_window_restore_height_ <= 0) {
-                editor_window_restore_width_ = std::max(320, static_cast<int>(ConfigurationManager::getInt("window::width", 1280)));
-                editor_window_restore_height_ = std::max(240, static_cast<int>(ConfigurationManager::getInt("window::height", 720)));
+                editor_window_restore_width_ = std::max(320, static_cast<int>(ConfigurationManager::getInt("window.width", 1280)));
+                editor_window_restore_height_ = std::max(240, static_cast<int>(ConfigurationManager::getInt("window.height", 720)));
             }
         }
 
@@ -629,12 +679,12 @@ void WindowManager::setEditorFullscreen(bool enable) {
     if (monitorWidth <= 0) monitorWidth = GetScreenWidth();
     if (monitorHeight <= 0) monitorHeight = GetScreenHeight();
 
-    int fullscreenWidth = std::max(320, static_cast<int>(ConfigurationManager::getInt("fullscreen::width", monitorWidth > 0 ? monitorWidth : 1920)));
-    int fullscreenHeight = std::max(240, static_cast<int>(ConfigurationManager::getInt("fullscreen::height", monitorHeight > 0 ? monitorHeight : 1080)));
+    int fullscreenWidth = std::max(320, static_cast<int>(ConfigurationManager::getInt("fullscreen.width", monitorWidth > 0 ? monitorWidth : 1920)));
+    int fullscreenHeight = std::max(240, static_cast<int>(ConfigurationManager::getInt("fullscreen.height", monitorHeight > 0 ? monitorHeight : 1080)));
         SetWindowSize(fullscreenWidth, fullscreenHeight);
-        ConfigurationManager::set("fullscreen::width", static_cast<int64_t>(fullscreenWidth));
-        ConfigurationManager::set("fullscreen::height", static_cast<int64_t>(fullscreenHeight));
-        ConfigurationManager::set("window::fullscreen", true);
+    ConfigurationManager::set("fullscreen.width", static_cast<int64_t>(fullscreenWidth));
+    ConfigurationManager::set("fullscreen.height", static_cast<int64_t>(fullscreenHeight));
+    ConfigurationManager::set("window.fullscreen", true);
         ConfigurationManager::save();
         gb2d::logging::LogManager::info("Editor fullscreen enabled: {}x{}", fullscreenWidth, fullscreenHeight);
         return;
@@ -642,10 +692,10 @@ void WindowManager::setEditorFullscreen(bool enable) {
 
     int targetWidth = editor_window_restore_width_ > 0
         ? editor_window_restore_width_
-        : std::max(320, static_cast<int>(ConfigurationManager::getInt("window::width", 1280)));
+    : std::max(320, static_cast<int>(ConfigurationManager::getInt("window.width", 1280)));
     int targetHeight = editor_window_restore_height_ > 0
         ? editor_window_restore_height_
-        : std::max(240, static_cast<int>(ConfigurationManager::getInt("window::height", 720)));
+    : std::max(240, static_cast<int>(ConfigurationManager::getInt("window.height", 720)));
 
     if (currentlyFullscreen) {
         ToggleFullscreen();
@@ -654,9 +704,9 @@ void WindowManager::setEditorFullscreen(bool enable) {
     SetWindowSize(targetWidth, targetHeight);
     editor_window_restore_width_ = targetWidth;
     editor_window_restore_height_ = targetHeight;
-    ConfigurationManager::set("window::fullscreen", false);
-    ConfigurationManager::set("window::width", static_cast<int64_t>(targetWidth));
-    ConfigurationManager::set("window::height", static_cast<int64_t>(targetHeight));
+    ConfigurationManager::set("window.fullscreen", false);
+    ConfigurationManager::set("window.width", static_cast<int64_t>(targetWidth));
+    ConfigurationManager::set("window.height", static_cast<int64_t>(targetHeight));
     ConfigurationManager::save();
     gb2d::logging::LogManager::info("Editor fullscreen disabled: {}x{}", targetWidth, targetHeight);
 }
@@ -856,7 +906,8 @@ void WindowManager::renderUI() {
                             catch (...) { ext.clear(); }
                             for (auto& c : ext) c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
 
-                            if (CodeEditorWindow::isTextLikeExtension(ext)) {
+                            bool preferAtlasPreview = (ext == ".json") && looksLikeTextureAtlasJson(path);
+                            if (!preferAtlasPreview && CodeEditorWindow::isTextLikeExtension(ext)) {
                                 ManagedWindow* existing = findByTypeId("code-editor");
                                 if (!existing) {
                                     std::string id = spawnWindowByType("code-editor", std::string("Text Editor"));
@@ -1285,7 +1336,8 @@ void WindowManager::renderUI() {
             std::string ext;
             try { ext = std::filesystem::path(filePathName).extension().string(); } catch (...) { ext.clear(); }
             for (auto& c : ext) c = (char)tolower((unsigned char)c);
-            bool isText = CodeEditorWindow::isTextLikeExtension(ext);
+            bool preferAtlasPreview = (ext == ".json") && looksLikeTextureAtlasJson(filePathName);
+            bool isText = !preferAtlasPreview && CodeEditorWindow::isTextLikeExtension(ext);
             if (isText) {
                 ManagedWindow* existing = findByTypeId("code-editor");
                 if (!existing) {
@@ -1346,7 +1398,7 @@ void WindowManager::buildDefaultLayoutIfNeeded() {
         (void)id;
     }
 
-    if (ConfigurationManager::getBool("window::resume_fullscreen", false)) {
+    if (ConfigurationManager::getBool("window.resume_fullscreen", false)) {
         if (!findByTypeId("game-window")) {
             std::string id = spawnWindowByType("game-window", std::string("Game Window"));
             (void)id;

@@ -1,21 +1,23 @@
 # Implementation Plan — TextureAtlas Support in TextureManager
 
 ## Phase 0 · Alignment & Clarifications *(In Progress)*
-- [ ] Resolve handling for trimmed/rotated frames in TexturePacker exports (support now vs. backlog)
-- [ ] Confirm JSON parser dependency (reuse existing vs. introduce new lightweight library)
-- [ ] Align naming conventions for atlas identifiers and frame keys across editor/gameplay code
+- [x] Resolve handling for trimmed/rotated frames in TexturePacker exports (support now vs. backlog)
+- [x] Confirm JSON parser dependency (reuse existing vs. introduce new lightweight library)
+- [x] Align naming conventions for atlas identifiers and frame keys across editor/gameplay code
 
 ## Phase 1 · API & Data Model Design
 - Outline:
 	- Define `TextureAtlasHandle` data contract (texture pointer, atlas key, frame lookup view)
 	- Extend `TextureManager` headers with `acquireAtlas`, `releaseAtlas`, and `getAtlasFrame` entry points
 	- Update metrics structures to report atlas-specific counts and memory usage
-- [ ] Draft header changes and circulate for review
-- [ ] Document expected lifetime rules in developer guide additions
+- [x] Draft header changes and circulate for review (handle contract finalized)
+- [x] Extend TextureManager headers with atlas acquire/release/lookup declarations
+- [x] Update metrics structures to capture atlas counts and frame totals
+- [x] Document expected lifetime rules in developer guide additions
 
 ## Phase 2 · Loader & Metadata Integration
-- [ ] Implement JSON parsing pipeline transforming TexturePacker schema into internal frame structures
-- [ ] Extend manager state with atlas records co-located with existing texture records
+- [x] Implement JSON parsing pipeline transforming TexturePacker schema into internal frame structures
+- [x] Extend manager state with atlas records co-located with existing texture records
 - [ ] Ensure acquire/cache/release flows update both texture and atlas metadata atomically
 - [ ] Add logging for atlas load success, parse failures, and placeholder fallbacks
 

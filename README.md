@@ -109,7 +109,7 @@ On WSL, reconfigure with `-DBUILD_TESTING=ON` or use the `windows-vs2022-x64-rel
 ## Configuration & layouts
 
 - Default config path: `config.json` in the repo root. Override with `GB2D_CONFIG_DIR`.
-- Keys use dotted syntax (`window.fullscreen`). Callers can also pass `window::fullscreen`; the service normalizes namespaces.
+- Keys use dotted syntax only (`window.fullscreen`); legacy double-colon aliases are no longer recognized.
 - Environment overrides: `GB2D_<SECTION>__<KEY>=value` (double underscore becomes dot). Values auto-detect booleans, integers, and floats.
 - Hotkey overrides live under the `input.hotkeys` array. Set `shortcut` to `null` to disable an action or edit values directly when scripting deployments.
 - Layout exports live in `out/layouts/<name>.{wm.txt,imgui.ini,layout.json}`. The manager restores `last` automatically on startup and backs up corrupted layouts.
@@ -129,9 +129,9 @@ On WSL, reconfigure with `-DBUILD_TESTING=ON` or use the `windows-vs2022-x64-rel
 ### ConfigurationManager
 
 - Boots with `ConfigurationManager::loadOrDefault()`; use `load()` / `save()` for explicit persistence.
-- Retrieve strongly-typed values with `getBool`, `getInt`, `getDouble`, `getString`, or `getStringList`. Keys accept either dotted (`audio.master_volume`) or double-colon (`audio::master_volume`) formats.
+- Retrieve strongly-typed values with `getBool`, `getInt`, `getDouble`, `getString`, or `getStringList`. Keys use dotted identifiers (for example `audio.volumes.master`).
 - Push overrides at runtime with the `set(...)` overloads, then call `save()` to persist. Subscribers registered via `subscribeOnChange` receive a callback whenever a save completes.
-- Environment overrides follow the `GB2D_<SECTION>__<KEY>` convention (e.g., `GB2D_WINDOW__FULLSCREEN=true`).
+- Environment overrides follow the `GB2D_<SECTION>__<NESTED>...` convention (e.g., `GB2D_WINDOW__FULLSCREEN=true`, `GB2D_AUDIO__VOLUMES__MASTER=0.5`).
 - Export the active profile to diagnostics tools with `exportCompact()`.
 
 📚 Reference: [ConfigurationManager overview](GameBuilder2d/docs/configuration-manager.md)
@@ -159,7 +159,7 @@ On WSL, reconfigure with `-DBUILD_TESTING=ON` or use the `windows-vs2022-x64-rel
 ### AudioManager
 
 - Initialization, device probing, and per-frame `tick()` calls are wired in `GameBuilder2d.cpp`; most subsystems can simply acquire sounds and play them.
-- Configure enablement, global volumes, alias slot limits, search paths, and preload lists under the `audio` block in `config.json` (or `GB2D_AUDIO__*` environment variables).
+- Configure enablement, global volumes, alias slot limits, search paths, and preload lists under the `audio` block in `config.json` (or nested `GB2D_AUDIO__*` environment variables such as `GB2D_AUDIO__CORE__ENABLED`).
 - Playback requests return a `PlaybackHandle`; call `AudioManager::updateSoundPlayback(handle, params)` to adjust volume/pan/pitch in real time—used by the editor's File Preview window to reflect slider changes instantly.
 - `AudioManager::reloadAll()` refreshes cached assets after changing search paths or when authoring new sounds while the tool is running.
 - Silent mode (triggered when devices are unavailable or explicitly disabled) keeps APIs safe to call while logging diagnostic hints.

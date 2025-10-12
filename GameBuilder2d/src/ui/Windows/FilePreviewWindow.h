@@ -29,7 +29,7 @@ public:
     void open(const std::string& path);
 
 private:
-    enum class Kind { None, Text, Image, Audio };
+    enum class Kind { None, Text, Image, Audio, Atlas };
     std::string title_ { "Preview" };
     std::string path_{};
     Kind kind_{Kind::None};
@@ -45,6 +45,10 @@ private:
     float audioPan_{0.5f};
     float audioPitch_{1.0f};
     std::string audioAlias_{};
+    std::string atlasKey_{};
+    bool atlasPlaceholder_{false};
+    std::size_t atlasFrameCount_{0};
+    float atlasZoom_{1.0f};
 
     void unload();
 };

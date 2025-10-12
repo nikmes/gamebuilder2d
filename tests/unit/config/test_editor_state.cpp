@@ -45,8 +45,8 @@ TEST_CASE("ConfigurationEditorState revert helpers operate on sections", "[confi
     resetConfiguration();
     auto state = ConfigurationEditorState::fromCurrent();
 
-    REQUIRE(state.setFieldValue("audio.master_volume", ConfigValue{0.5}));
-    REQUIRE(state.setFieldValue("audio.music_volume", ConfigValue{0.35}));
+    REQUIRE(state.setFieldValue("audio.volumes.master", ConfigValue{0.5}));
+    REQUIRE(state.setFieldValue("audio.volumes.music", ConfigValue{0.35}));
 
     auto* audioSection = state.section("audio");
     REQUIRE(audioSection != nullptr);
@@ -97,11 +97,11 @@ TEST_CASE("ConfigurationEditorState can revert sections and session to defaults"
     resetConfiguration();
     auto state = ConfigurationEditorState::fromCurrent();
 
-    REQUIRE(state.setFieldValue("audio.master_volume", ConfigValue{0.25}));
-    REQUIRE(state.setFieldValue("audio.music_volume", ConfigValue{0.30}));
+    REQUIRE(state.setFieldValue("audio.volumes.master", ConfigValue{0.25}));
+    REQUIRE(state.setFieldValue("audio.volumes.music", ConfigValue{0.30}));
     REQUIRE(state.revertSectionToDefaults("audio"));
 
-    auto* master = state.field("audio.master_volume");
+    auto* master = state.field("audio.volumes.master");
     REQUIRE(master != nullptr);
     CHECK(std::get<double>(master->currentValue) == Approx(1.0));
 
@@ -151,15 +151,15 @@ TEST_CASE("ConfigurationEditorState validates enum and list fields", "[config][e
     CHECK(theme->validation.valid);
     CHECK(theme->validation.message.empty());
 
-    REQUIRE(state.setFieldValue("audio.search_paths", ConfigValue{std::vector<std::string>{"", "assets/audio"}}));
-    REQUIRE_FALSE(state.validateField("audio.search_paths", ValidationPhase::OnApply));
-    auto* searchPaths = state.field("audio.search_paths");
+    REQUIRE(state.setFieldValue("audio.engine.search_paths", ConfigValue{std::vector<std::string>{"", "assets/audio"}}));
+    REQUIRE_FALSE(state.validateField("audio.engine.search_paths", ValidationPhase::OnApply));
+    auto* searchPaths = state.field("audio.engine.search_paths");
     REQUIRE(searchPaths != nullptr);
     CHECK_FALSE(searchPaths->validation.valid);
     CHECK(searchPaths->validation.message.find("Directory paths cannot be empty") != std::string::npos);
 
-    REQUIRE(state.setFieldValue("audio.search_paths", ConfigValue{std::vector<std::string>{"assets/audio"}}));
-    REQUIRE(state.validateField("audio.search_paths", ValidationPhase::OnApply));
+    REQUIRE(state.setFieldValue("audio.engine.search_paths", ConfigValue{std::vector<std::string>{"assets/audio"}}));
+    REQUIRE(state.validateField("audio.engine.search_paths", ValidationPhase::OnApply));
     CHECK(searchPaths->validation.valid);
     CHECK(searchPaths->validation.message.empty());
 }
@@ -191,11 +191,11 @@ TEST_CASE("ConfigurationEditorState supports section undo/redo", "[config][edito
     resetConfiguration();
     auto state = ConfigurationEditorState::fromCurrent();
 
-    REQUIRE(state.setFieldValue("audio.master_volume", ConfigValue{0.25}));
-    REQUIRE(state.setFieldValue("audio.music_volume", ConfigValue{0.45}));
+    REQUIRE(state.setFieldValue("audio.volumes.master", ConfigValue{0.25}));
+    REQUIRE(state.setFieldValue("audio.volumes.music", ConfigValue{0.45}));
 
-    auto* master = state.field("audio.master_volume");
-    auto* music = state.field("audio.music_volume");
+    auto* master = state.field("audio.volumes.master");
+    auto* music = state.field("audio.volumes.music");
     REQUIRE(master != nullptr);
     REQUIRE(music != nullptr);
 
