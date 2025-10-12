@@ -50,8 +50,10 @@ TEST_CASE("Large config file is rejected; defaults loaded and .bak created", "[c
     REQUIRE_FALSE(ok);
 
     // Defaults applied
-    REQUIRE(gb2d::ConfigurationManager::getInt("window::width", -1) == 1280);
-    REQUIRE(gb2d::ConfigurationManager::getInt("window::height", -1) == 720);
+    REQUIRE(gb2d::ConfigurationManager::getInt("window.width", -1) == 1280);
+    REQUIRE(gb2d::ConfigurationManager::getInt("window.height", -1) == 720);
+    REQUIRE(gb2d::ConfigurationManager::getInt("window::width", -1) == -1);
+    REQUIRE(gb2d::ConfigurationManager::getInt("window::height", -1) == -1);
 
     // .bak present
     REQUIRE(fs::exists(dir / "config.json.bak"));

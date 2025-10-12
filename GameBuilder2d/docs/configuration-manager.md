@@ -6,7 +6,7 @@ The `ConfigurationManager` owns runtime settings for the editor, tooling, and sa
 
 - Bootstrap with `loadOrDefault()` to populate in-memory defaults for all managers.
 - Persist and restore settings via `load()` / `save()`.
-- Retrieve strongly-typed values using `getBool`, `getInt`, `getDouble`, `getString`, and `getStringList`.
+- Retrieve strongly-typed values using `getBool`, `getInt`, `getDouble`, `getString`, and `getStringList` (keys use dotted identifiers such as `audio.volumes.master`; double-colon aliases like `audio::volumes::master` are no longer supported).
 - Override values at runtime through the `set(...)` overloads, then call `save()` to persist.
 - Subscribe to changes with `subscribeOnChange` to keep dependent systems in sync.
 - Export diagnostics snapshots using `exportCompact()`.
@@ -18,7 +18,7 @@ The default config lives at `config.json` (see `paths::configFilePath()` for pla
 - Window dimensions (`window.width`, `window.height`, fullscreen fields).
 - UI theme selection (`ui.theme`).
 - Texture service configuration (`textures.*`).
-- Audio service configuration (`audio.*`).
+- Audio service configuration (`audio.core.*`, `audio.volumes.*`, `audio.engine.*`, `audio.preload.*`).
 - Hotkey overrides (`input.hotkeys` array) used by the editor to persist custom shortcuts.
 
 Feel free to extend the schema—new keys automatically participate in typed getters/setters.
@@ -46,7 +46,8 @@ The HotKeyManager reads and writes the `input.hotkeys` array. Each element track
 The manager reads environment variables prefixed with `GB2D_`. Each override maps to a dotted key using double underscores as separators:
 
 - `GB2D_WINDOW__FULLSCREEN=true` → `window.fullscreen`
-- `GB2D_AUDIO__MASTER_VOLUME=0.5` → `audio.master_volume`
+- `GB2D_AUDIO__VOLUMES__MASTER=0.5` → `audio.volumes.master`
+- Legacy `::` namespace separators are not recognized—stick with dotted keys when using overrides or calling the API.
 
 Values are parsed into booleans, integers, doubles, or strings depending on the literal. Overrides apply after the configuration file is loaded, so they win over disk content.
 
@@ -90,7 +91,7 @@ const int subscriptionId = ConfigurationManager::subscribeOnChange([](){
     gb2d::audio::AudioManager::reloadAll();
 });
 
-ConfigurationManager::set("audio.master_volume", 0.65);
+ConfigurationManager::set("audio.volumes.master", 0.65);
 ConfigurationManager::save();
 ConfigurationManager::unsubscribe(subscriptionId);
 ```

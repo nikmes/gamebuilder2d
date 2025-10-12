@@ -8,16 +8,27 @@ Add or edit the `audio` block near the root of `config.json`:
 
 ```jsonc
 "audio": {
-  "enabled": true,
-  "master_volume": 1.0,
-  "music_volume": 1.0,
-  "sfx_volume": 1.0,
-  "max_concurrent_sounds": 16,
-  "search_paths": [
-    "assets/audio"
-  ],
-  "preload_sounds": [],
-  "preload_music": []
+  "core": {
+    "enabled": true,
+    "diagnostics_logging": true
+  },
+  "volumes": {
+    "master": 1.0,
+    "music": 1.0,
+    "sfx": 1.0
+  },
+  "engine": {
+    "max_concurrent_sounds": 16,
+    "search_paths": [
+      "assets/audio"
+    ]
+  },
+  "preload": {
+    "sounds": [],
+    "music": [],
+    "sound_aliases": {},
+    "music_aliases": {}
+  }
 }
 ```
 
@@ -27,26 +38,29 @@ All keys are optional; anything omitted falls back to the defaults listed above.
 
 | Key | Type / Range | Default | Notes |
 | --- | --- | --- | --- |
-| `audio.enabled` | `bool` | `true` | Disables all device work when `false`. Playback requests become silent no-ops with log hints. |
-| `audio.master_volume` | `float` (`0.0`–`1.0`) | `1.0` | Forwarded to Raylib’s `SetMasterVolume` once the device is ready. |
-| `audio.music_volume` | `float` (`0.0`–`1.0`) | `1.0` | Applied to each music stream before playback. |
-| `audio.sfx_volume` | `float` (`0.0`–`1.0`) | `1.0` | Multiplies per-sound volume requests. |
-| `audio.max_concurrent_sounds` | `int` ≥ `0` | `16` | Caps simultaneously active SFX alias slots; additional requests are throttled with warnings. |
-| `audio.search_paths` | `string[]` | `["assets/audio"]` | Ordered list of directories used to resolve relative sound/music identifiers. |
-| `audio.preload_sounds` | `string[]` | `[]` | Identifiers to eagerly load as `Sound` during `AudioManager::init`. |
-| `audio.preload_music` | `string[]` | `[]` | Identifiers to preload/prepare as streaming `Music` during init. |
+| `audio.core.enabled` | `bool` | `true` | Disables all device work when `false`. Playback requests become silent no-ops with log hints. |
+| `audio.core.diagnostics_logging` | `bool` | `true` | Emits verbose event logs when the manager publishes audio events. |
+| `audio.volumes.master` | `float` (`0.0`–`1.0`) | `1.0` | Forwarded to Raylib’s `SetMasterVolume` once the device is ready. |
+| `audio.volumes.music` | `float` (`0.0`–`1.0`) | `1.0` | Applied to each music stream before playback. |
+| `audio.volumes.sfx` | `float` (`0.0`–`1.0`) | `1.0` | Multiplies per-sound volume requests. |
+| `audio.engine.max_concurrent_sounds` | `int` ≥ `0` | `16` | Caps simultaneously active SFX alias slots; additional requests are throttled with warnings. |
+| `audio.engine.search_paths` | `string[]` | `["assets/audio"]` | Ordered list of directories used to resolve relative sound/music identifiers. |
+| `audio.preload.sounds` | `string[]` | `[]` | Identifiers to eagerly load as `Sound` during `AudioManager::init`. |
+| `audio.preload.music` | `string[]` | `[]` | Identifiers to preload/prepare as streaming `Music` during init. |
+| `audio.preload.sound_aliases` | `object` | `{}` | Optional map of canonical preload keys → friendlier aliases surfaced in UI. |
+| `audio.preload.music_aliases` | `object` | `{}` | Optional map of canonical music preload keys → alternate labels. |
 
 ## Environment overrides
 
 Every configuration entry can be overridden without touching disk by using the existing `GB2D_` environment convention. Examples:
 
 ```powershell
-setx GB2D_AUDIO__ENABLED false
-setx GB2D_AUDIO__MAX_CONCURRENT_SOUNDS 8
-setx GB2D_AUDIO__SEARCH_PATHS "assets/audio;dlc/audio"
+setx GB2D_AUDIO__CORE__ENABLED false
+setx GB2D_AUDIO__ENGINE__MAX_CONCURRENT_SOUNDS 8
+setx GB2D_AUDIO__ENGINE__SEARCH_PATHS "[\"assets/audio\",\"dlc/audio\"]"
 ```
 
-Lists use the same semicolon-separated syntax as other services. Overrides are read the next time the application boots (or when the configuration manager reloads the active profile).
+Array overrides should be passed as JSON literals (see the `SEARCH_PATHS` example above). Overrides are read the next time the application boots (or when the configuration manager reloads the active profile).
 
 ## Runtime updates
 

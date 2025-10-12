@@ -168,38 +168,22 @@ struct AudioManagerWindowTestFixture {
         audio::AudioManager::resetForTesting();
         ConfigurationManager::loadOrDefault();
 
-        originalEnabled = ConfigurationManager::getBool(
-            "audio::core::enabled",
-            ConfigurationManager::getBool("audio::enabled", true));
-        originalMasterVolume = ConfigurationManager::getDouble(
-            "audio::volumes::master",
-            ConfigurationManager::getDouble("audio::master_volume", 1.0));
-        originalMusicVolume = ConfigurationManager::getDouble(
-            "audio::volumes::music",
-            ConfigurationManager::getDouble("audio::music_volume", 1.0));
-        originalSfxVolume = ConfigurationManager::getDouble(
-            "audio::volumes::sfx",
-            ConfigurationManager::getDouble("audio::sfx_volume", 1.0));
-        originalMaxConcurrent = ConfigurationManager::getInt(
-            "audio::engine::max_concurrent_sounds",
-            ConfigurationManager::getInt("audio::max_concurrent_sounds", 16));
-        originalSearchPaths = ConfigurationManager::getStringList(
-            "audio::engine::search_paths",
-            ConfigurationManager::getStringList("audio::search_paths", {"assets/audio"}));
-        originalPreloadSounds = ConfigurationManager::getStringList(
-            "audio::preload::sounds",
-            ConfigurationManager::getStringList("audio::preload_sounds", {}));
-        originalPreloadMusic = ConfigurationManager::getStringList(
-            "audio::preload::music",
-            ConfigurationManager::getStringList("audio::preload_music", {}));
+        originalEnabled = ConfigurationManager::getBool("audio.core.enabled", true);
+        originalMasterVolume = ConfigurationManager::getDouble("audio.volumes.master", 1.0);
+        originalMusicVolume = ConfigurationManager::getDouble("audio.volumes.music", 1.0);
+        originalSfxVolume = ConfigurationManager::getDouble("audio.volumes.sfx", 1.0);
+        originalMaxConcurrent = ConfigurationManager::getInt("audio.engine.max_concurrent_sounds", 16);
+        originalSearchPaths = ConfigurationManager::getStringList("audio.engine.search_paths", {"assets/audio"});
+        originalPreloadSounds = ConfigurationManager::getStringList("audio.preload.sounds", {});
+        originalPreloadMusic = ConfigurationManager::getStringList("audio.preload.music", {});
 
         backend.ready = true;
         audio::AudioManager::setBackendForTesting(&backend);
         audio::AudioManager::setRaylibHooksForTesting(&DummyRaylib::hooks());
 
         // Ensure tests start from a clean preload state
-        ConfigurationManager::set("audio::preload::sounds", std::vector<std::string>{});
-        ConfigurationManager::set("audio::preload::music", std::vector<std::string>{});
+    ConfigurationManager::set("audio.preload.sounds", std::vector<std::string>{});
+    ConfigurationManager::set("audio.preload.music", std::vector<std::string>{});
     }
 
     ~AudioManagerWindowTestFixture() {
@@ -207,14 +191,14 @@ struct AudioManagerWindowTestFixture {
         audio::AudioManager::setBackendForTesting(nullptr);
         audio::AudioManager::setRaylibHooksForTesting(nullptr);
 
-        ConfigurationManager::set("audio::core::enabled", originalEnabled);
-        ConfigurationManager::set("audio::volumes::master", originalMasterVolume);
-        ConfigurationManager::set("audio::volumes::music", originalMusicVolume);
-        ConfigurationManager::set("audio::volumes::sfx", originalSfxVolume);
-        ConfigurationManager::set("audio::engine::max_concurrent_sounds", static_cast<int64_t>(originalMaxConcurrent));
-        ConfigurationManager::set("audio::engine::search_paths", originalSearchPaths);
-        ConfigurationManager::set("audio::preload::sounds", originalPreloadSounds);
-        ConfigurationManager::set("audio::preload::music", originalPreloadMusic);
+    ConfigurationManager::set("audio.core.enabled", originalEnabled);
+    ConfigurationManager::set("audio.volumes.master", originalMasterVolume);
+    ConfigurationManager::set("audio.volumes.music", originalMusicVolume);
+    ConfigurationManager::set("audio.volumes.sfx", originalSfxVolume);
+    ConfigurationManager::set("audio.engine.max_concurrent_sounds", static_cast<int64_t>(originalMaxConcurrent));
+    ConfigurationManager::set("audio.engine.search_paths", originalSearchPaths);
+    ConfigurationManager::set("audio.preload.sounds", originalPreloadSounds);
+    ConfigurationManager::set("audio.preload.music", originalPreloadMusic);
         ConfigurationManager::save();
         ConfigurationManager::loadOrDefault();
     }
@@ -338,9 +322,7 @@ TEST_CASE_METHOD(AudioManagerWindowTestFixture,
 
     REQUIRE(AudioManagerWindowTestAccess::applyConfig(window));
 
-    auto persistedSounds = ConfigurationManager::getStringList(
-        "audio::preload::sounds",
-        ConfigurationManager::getStringList("audio::preload_sounds", {}));
+    auto persistedSounds = ConfigurationManager::getStringList("audio.preload.sounds", {});
     REQUIRE(std::find(persistedSounds.begin(), persistedSounds.end(), "spaceinvaders/laser.wav") != persistedSounds.end());
     REQUIRE(AudioManagerWindowTestAccess::pendingSoundPreloads(window).empty());
     REQUIRE(AudioManagerWindowTestAccess::sessionLoadedSoundKeys(window).empty());
@@ -369,9 +351,7 @@ TEST_CASE_METHOD(AudioManagerWindowTestFixture,
 
     REQUIRE(AudioManagerWindowTestAccess::applyConfig(window));
 
-    auto persistedSounds = ConfigurationManager::getStringList(
-        "audio::preload::sounds",
-        ConfigurationManager::getStringList("audio::preload_sounds", {}));
+    auto persistedSounds = ConfigurationManager::getStringList("audio.preload.sounds", {});
     REQUIRE(persistedSounds.size() == 1);
     REQUIRE(canonicalizePreloadTest(persistedSounds.front()) == "spaceinvaders/laser.wav");
     REQUIRE(std::none_of(persistedSounds.begin(), persistedSounds.end(), [](const std::string& entry) {
@@ -414,16 +394,12 @@ TEST_CASE_METHOD(AudioManagerWindowTestFixture,
     REQUIRE(AudioManagerWindowTestAccess::isConfigDirty(window));
     REQUIRE(AudioManagerWindowTestAccess::applyConfig(window));
 
-    auto persistedSounds = ConfigurationManager::getStringList(
-        "audio::preload::sounds",
-        ConfigurationManager::getStringList("audio::preload_sounds", {}));
+    auto persistedSounds = ConfigurationManager::getStringList("audio.preload.sounds", {});
     REQUIRE(persistedSounds.size() == 1);
     REQUIRE(persistedSounds.front() == trimCopyTest(persistedSounds.front()));
     REQUIRE(canonicalizePreloadTest(persistedSounds.front()) == "spaceinvaders/laser.wav");
 
-    auto persistedMusic = ConfigurationManager::getStringList(
-        "audio::preload::music",
-        ConfigurationManager::getStringList("audio::preload_music", {}));
+    auto persistedMusic = ConfigurationManager::getStringList("audio.preload.music", {});
     REQUIRE(persistedMusic.size() == 1);
     REQUIRE(persistedMusic.front() == trimCopyTest(persistedMusic.front()));
     REQUIRE(canonicalizePreloadTest(persistedMusic.front()) == "bgm/theme.ogg");

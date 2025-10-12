@@ -7,8 +7,8 @@ TEST_CASE("loadOrDefault sets defaults", "[config]") {
     REQUIRE(gb2d::ConfigurationManager::getInt("window.height", 0) == 720);
     REQUIRE(gb2d::ConfigurationManager::getString("ui.theme", "") == std::string("dark"));
 
-    // Also support section separator '::' equivalently to '.'
-    REQUIRE(gb2d::ConfigurationManager::getInt("window::width", -1) == 1280);
-    gb2d::ConfigurationManager::set("window::fullscreen", true);
+    // Legacy section separator '::' should not resolve to dotted keys
+    REQUIRE(gb2d::ConfigurationManager::getInt("window::width", -1) == -1);
+    gb2d::ConfigurationManager::set("window.fullscreen", true);
     REQUIRE(gb2d::ConfigurationManager::getBool("window.fullscreen", false) == true);
 }

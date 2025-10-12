@@ -166,7 +166,7 @@ TEST_CASE("Configuration window apply and save persist across restart", "[integr
     window.reloadFromCurrent();
 
     REQUIRE(window.setField("window.width", gb2d::ConfigValue{static_cast<std::int64_t>(1724)}));
-    REQUIRE(window.setField("audio.master_volume", gb2d::ConfigValue{0.35}));
+    REQUIRE(window.setField("audio.volumes.master", gb2d::ConfigValue{0.35}));
     REQUIRE(window.hasUnappliedChanges());
     REQUIRE(window.state().isDirty());
 
@@ -174,7 +174,7 @@ TEST_CASE("Configuration window apply and save persist across restart", "[integr
     CHECK_FALSE(window.hasUnappliedChanges());
     CHECK(window.hasAppliedUnsavedChanges());
     CHECK(gb2d::ConfigurationManager::getInt("window.width", 0) == 1724);
-    CHECK(gb2d::ConfigurationManager::getDouble("audio.master_volume", 0.0) == Approx(0.35));
+    CHECK(gb2d::ConfigurationManager::getDouble("audio.volumes.master", 0.0) == Approx(0.35));
 
     bool backupCreated = false;
     REQUIRE(window.save(true, &backupCreated));
@@ -194,17 +194,20 @@ TEST_CASE("Configuration window apply and save persist across restart", "[integr
         REQUIRE(doc.contains("window"));
         REQUIRE(doc["window"].contains("width"));
         CHECK(doc["window"]["width"].get<std::int64_t>() == 1724);
-        REQUIRE(doc.contains("audio"));
-        REQUIRE(doc["audio"].contains("master_volume"));
-        CHECK(doc["audio"]["master_volume"].get<double>() == Approx(0.35));
+    REQUIRE(doc.contains("audio"));
+    REQUIRE(doc["audio"].contains("volumes"));
+    const auto& volumes = doc["audio"]["volumes"];
+    REQUIRE(volumes.is_object());
+    REQUIRE(volumes.contains("master"));
+    CHECK(volumes["master"].get<double>() == Approx(0.35));
     }
 
     // Simulate runtime divergence and ensure reload pulls saved values
     gb2d::ConfigurationManager::set("window.width", static_cast<std::int64_t>(1199));
-    gb2d::ConfigurationManager::set("audio.master_volume", 1.0);
+    gb2d::ConfigurationManager::set("audio.volumes.master", 1.0);
     REQUIRE(gb2d::ConfigurationManager::load());
     CHECK(gb2d::ConfigurationManager::getInt("window.width", 0) == 1724);
-    CHECK(gb2d::ConfigurationManager::getDouble("audio.master_volume", 0.0) == Approx(0.35));
+    CHECK(gb2d::ConfigurationManager::getDouble("audio.volumes.master", 0.0) == Approx(0.35));
 
     ConfigurationWindowHarness reopened;
     reopened.reloadFromCurrent();
@@ -217,7 +220,7 @@ TEST_CASE("Configuration window apply and save persist across restart", "[integr
     REQUIRE(std::holds_alternative<std::int64_t>(widthField->currentValue));
     CHECK(std::get<std::int64_t>(widthField->currentValue) == 1724);
 
-    const auto* volumeField = reopened.state().field("audio.master_volume");
+    const auto* volumeField = reopened.state().field("audio.volumes.master");
     REQUIRE(volumeField != nullptr);
     REQUIRE(std::holds_alternative<double>(volumeField->currentValue));
     CHECK(std::get<double>(volumeField->currentValue) == Approx(0.35));

@@ -31,6 +31,17 @@ Each managed window keeps its own metadata (`ManagedWindow`):
 
 Use `undockWindow`, `closeWindow`, and `reorderTabs` to script the layout programmatically.
 
+## File preview window
+
+`FilePreviewWindow` provides a quick-look view for files on disk:
+
+- **Images** – renders supported bitmap formats with placeholder warnings when the texture fails to load.
+- **Audio** – streams clips with inline transport controls and live parameter tweaking.
+- **Text/JSON** – dumps the raw contents with horizontal scrolling.
+- **Texture atlases** – when a TexturePacker JSON atlas is opened, the referenced PNG is displayed with its frame rectangles overlaid. Use the zoom slider (or the fit/reset controls) to inspect individual sprites; hovering a frame shows its name and coordinates.
+
+The window is spawned via the registry (`FilePreviewWindow` type id) and can be docked like any other modular window.
+
 ## Layout persistence
 
 Call `saveLayout(name)` and `loadLayout(name)` to persist user arrangements. Layout files live under `out/layouts/` and can be surfaced in custom UI (the default layout picker already does this). Layout saves are idempotent so you can safely call them when quitting the editor.

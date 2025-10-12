@@ -37,11 +37,11 @@ int main()
     constexpr int kDefaultFullscreenWidth = 1920;
     constexpr int kDefaultFullscreenHeight = 1080;
 
-    int configWidth = static_cast<int>(gb2d::ConfigurationManager::getInt("window::width", kDefaultWidth));
-    int configHeight = static_cast<int>(gb2d::ConfigurationManager::getInt("window::height", kDefaultHeight));
-    bool startFullscreen = gb2d::ConfigurationManager::getBool("window::fullscreen", false);
-    int fullscreenWidth = static_cast<int>(gb2d::ConfigurationManager::getInt("fullscreen::width", kDefaultFullscreenWidth));
-    int fullscreenHeight = static_cast<int>(gb2d::ConfigurationManager::getInt("fullscreen::height", kDefaultFullscreenHeight));
+    int configWidth = static_cast<int>(gb2d::ConfigurationManager::getInt("window.width", kDefaultWidth));
+    int configHeight = static_cast<int>(gb2d::ConfigurationManager::getInt("window.height", kDefaultHeight));
+    bool startFullscreen = gb2d::ConfigurationManager::getBool("window.fullscreen", false);
+    int fullscreenWidth = static_cast<int>(gb2d::ConfigurationManager::getInt("fullscreen.width", kDefaultFullscreenWidth));
+    int fullscreenHeight = static_cast<int>(gb2d::ConfigurationManager::getInt("fullscreen.height", kDefaultFullscreenHeight));
 
     configWidth = std::max(configWidth, 320);
     configHeight = std::max(configHeight, 240);

@@ -78,7 +78,7 @@ TEST_CASE("ConfigurationManager validateFieldValue enforces schema constraints",
     ConfigurationManager::loadOrDefault();
     const auto& schema = ConfigurationManager::schema();
 
-    const auto* volumeField = schema.findField("audio.master_volume");
+    const auto* volumeField = schema.findField("audio.volumes.master");
     REQUIRE(volumeField != nullptr);
 
     {
@@ -101,7 +101,7 @@ TEST_CASE("ConfigurationManager validateFieldValue enforces schema constraints",
         CHECK(state.valid);
     }
 
-    const auto* searchPathsField = schema.findField("audio.search_paths");
+    const auto* searchPathsField = schema.findField("audio.engine.search_paths");
     REQUIRE(searchPathsField != nullptr);
     {
         ConfigValue badPaths = std::vector<std::string>{"assets/audio", ""};
@@ -133,7 +133,7 @@ TEST_CASE("ConfigurationManager applyRuntime seeds defaults and fires reload hoo
 
     nlohmann::json doc = nlohmann::json::object({
         {"window", nlohmann::json::object({{"width", 1600}, {"height", 900}})},
-        {"audio", nlohmann::json::object({{"master_volume", 0.25}})}
+    {"audio", nlohmann::json::object({{"volumes", nlohmann::json::object({{"master", 0.25}})}})}
     });
 
     REQUIRE(ConfigurationManager::applyRuntime(doc));
@@ -141,7 +141,7 @@ TEST_CASE("ConfigurationManager applyRuntime seeds defaults and fires reload hoo
 
     CHECK(ConfigurationManager::getInt("window.width", 0) == 1600);
     CHECK(ConfigurationManager::getInt("window.height", 0) == 900);
-    CHECK(ConfigurationManager::getDouble("audio.master_volume", 1.0) == Approx(0.25));
+    CHECK(ConfigurationManager::getDouble("audio.volumes.master", 1.0) == Approx(0.25));
 
     const auto& raw = ConfigurationManager::raw();
     REQUIRE(raw.contains("input"));

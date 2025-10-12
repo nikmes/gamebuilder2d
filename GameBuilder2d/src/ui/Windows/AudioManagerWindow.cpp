@@ -1292,15 +1292,15 @@ bool AudioManagerWindow::applyConfigChanges() {
         }
     }
 
-    ConfigurationManager::set("audio::core::enabled", configWorking_.enabled);
-    ConfigurationManager::set("audio::core::diagnostics_logging", configWorking_.diagnosticsLoggingEnabled);
-    ConfigurationManager::set("audio::volumes::master", static_cast<double>(std::clamp(configWorking_.masterVolume, 0.0f, 1.0f)));
-    ConfigurationManager::set("audio::volumes::music", static_cast<double>(std::clamp(configWorking_.musicVolume, 0.0f, 1.0f)));
-    ConfigurationManager::set("audio::volumes::sfx", static_cast<double>(std::clamp(configWorking_.sfxVolume, 0.0f, 1.0f)));
-    ConfigurationManager::set("audio::engine::max_concurrent_sounds", static_cast<int64_t>(std::max(configWorking_.maxConcurrentSounds, 0)));
-    ConfigurationManager::set("audio::engine::search_paths", sanitizedPaths);
-    ConfigurationManager::set("audio::preload::sounds", sanitizedSoundPreloads);
-    ConfigurationManager::set("audio::preload::music", sanitizedMusicPreloads);
+    ConfigurationManager::set("audio.core.enabled", configWorking_.enabled);
+    ConfigurationManager::set("audio.core.diagnostics_logging", configWorking_.diagnosticsLoggingEnabled);
+    ConfigurationManager::set("audio.volumes.master", static_cast<double>(std::clamp(configWorking_.masterVolume, 0.0f, 1.0f)));
+    ConfigurationManager::set("audio.volumes.music", static_cast<double>(std::clamp(configWorking_.musicVolume, 0.0f, 1.0f)));
+    ConfigurationManager::set("audio.volumes.sfx", static_cast<double>(std::clamp(configWorking_.sfxVolume, 0.0f, 1.0f)));
+    ConfigurationManager::set("audio.engine.max_concurrent_sounds", static_cast<int64_t>(std::max(configWorking_.maxConcurrentSounds, 0)));
+    ConfigurationManager::set("audio.engine.search_paths", sanitizedPaths);
+    ConfigurationManager::set("audio.preload.sounds", sanitizedSoundPreloads);
+    ConfigurationManager::set("audio.preload.music", sanitizedMusicPreloads);
     nlohmann::json soundAliasJson = nlohmann::json::object();
     for (const auto& [canonical, alias] : sanitizedSoundAliases) {
         soundAliasJson[canonical] = alias;
@@ -1309,8 +1309,8 @@ bool AudioManagerWindow::applyConfigChanges() {
     for (const auto& [canonical, alias] : sanitizedMusicAliases) {
         musicAliasJson[canonical] = alias;
     }
-    ConfigurationManager::setJson("audio::preload::sound_aliases", soundAliasJson);
-    ConfigurationManager::setJson("audio::preload::music_aliases", musicAliasJson);
+    ConfigurationManager::setJson("audio.preload.sound_aliases", soundAliasJson);
+    ConfigurationManager::setJson("audio.preload.music_aliases", musicAliasJson);
 
     bool saved = ConfigurationManager::save();
     if (!saved) {

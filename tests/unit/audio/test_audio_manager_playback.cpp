@@ -325,16 +325,16 @@ struct AudioTestFixture {
         std::ofstream(soundPath).put('\0');
         std::ofstream(musicPath).put('\0');
 
-        ConfigurationManager::set("audio::core::enabled", true);
-        ConfigurationManager::set("audio::volumes::master", 0.75);
-        ConfigurationManager::set("audio::volumes::music", 0.5);
-        ConfigurationManager::set("audio::volumes::sfx", 0.8);
-        ConfigurationManager::set("audio::engine::max_concurrent_sounds", static_cast<int64_t>(2));
+        ConfigurationManager::set("audio.core.enabled", true);
+        ConfigurationManager::set("audio.volumes.master", 0.75);
+        ConfigurationManager::set("audio.volumes.music", 0.5);
+        ConfigurationManager::set("audio.volumes.sfx", 0.8);
+        ConfigurationManager::set("audio.engine.max_concurrent_sounds", static_cast<int64_t>(2));
         ConfigurationManager::set(
-            "audio::engine::search_paths",
+            "audio.engine.search_paths",
             std::vector<std::string>{tempDir.string()});
-        ConfigurationManager::set("audio::preload::sounds", std::vector<std::string>{});
-        ConfigurationManager::set("audio::preload::music", std::vector<std::string>{});
+        ConfigurationManager::set("audio.preload.sounds", std::vector<std::string>{});
+        ConfigurationManager::set("audio.preload.music", std::vector<std::string>{});
 
         backend.ready = true;
         AudioManager::setBackendForTesting(&backend);

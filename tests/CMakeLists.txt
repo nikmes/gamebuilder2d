@@ -62,6 +62,7 @@ catch_discover_tests(window_tests)
 add_executable(texture_tests
   test_bootstrap.cpp
   unit/texture/test_texture_manager.cpp
+  integration/test_texture_atlas_integration.cpp
 )
 target_include_directories(texture_tests PRIVATE
   ${CMAKE_SOURCE_DIR}/GameBuilder2d/src

@@ -1,15 +1,28 @@
 {
   "audio": {
-    "enabled": true,
-    "master_volume": 1.0,
-    "max_concurrent_sounds": 16,
-    "music_volume": 1.0,
-    "preload_music": [],
-    "preload_sounds": ["spaceinvaders/hit.wav"],
-    "search_paths": [
-      "assets/audio"
-    ],
-    "sfx_volume": 1.0
+    "core": {
+      "enabled": true,
+      "diagnostics_logging": true
+    },
+    "volumes": {
+      "master": 1.0,
+      "music": 1.0,
+      "sfx": 1.0
+    },
+    "engine": {
+      "max_concurrent_sounds": 16,
+      "search_paths": [
+        "assets/audio"
+      ]
+    },
+    "preload": {
+      "sounds": [
+        "spaceinvaders/hit.wav"
+      ],
+      "music": [],
+      "sound_aliases": {},
+      "music_aliases": {}
+    }
   },
   "fullscreen": {
     "game_height": 1080,
@@ -25,11 +38,12 @@
       { "action": "global.focusTextEditor", "shortcut": "Ctrl+Shift+E" },
       { "action": "global.showConsole", "shortcut": "Ctrl+Shift+C" },
       { "action": "global.spawnDockWindow", "shortcut": "Ctrl+Shift+N" },
+      { "action": "global.openConfiguration", "shortcut": "Ctrl+," },
       { "action": "global.openHotkeySettings", "shortcut": "Ctrl+Alt+K" },
-      { "action": "layouts.saveLayout", "shortcut": "Ctrl+Shift+L" },
+      { "action": "layouts.saveLayout", "shortcut": "Ctrl+Alt+S" },
       { "action": "layouts.openManager", "shortcut": "Ctrl+Alt+L" },
       { "action": "codeEditor.newFile", "shortcut": "Ctrl+N" },
-      { "action": "codeEditor.openFile", "shortcut": "Ctrl+Shift+P" },
+      { "action": "codeEditor.openFile", "shortcut": "Ctrl+Shift+O" },
       { "action": "codeEditor.saveFile", "shortcut": "Ctrl+S" },
       { "action": "codeEditor.saveFileAs", "shortcut": "Ctrl+Shift+S" },
       { "action": "codeEditor.saveAll", "shortcut": "Ctrl+Alt+S" },
@@ -45,6 +59,7 @@
   "textures": {
     "default_filter": "bilinear",
     "generate_mipmaps": false,
+    "log_atlas_contents": false,
     "max_bytes": 0,
     "placeholder_path": "",
     "search_paths": [
